@@ -15,6 +15,7 @@ const windows = {};
 const themes = new Set(['systemmode', 'darkmode', 'lightmode']);
 const preferences = { theme: 'systemmode', alwaysOnTop: false, autoKeyboard: true };
 const mac = process.platform === 'darwin';
+const defaultHotkey = mac ? 'Command+Control+R' : 'Super+Shift+R';
 const settingsDir = path.join(process.env.APPDATA || (mac
     ? path.join(app.getPath('home'), 'Library', 'Application Support')
     : path.join(app.getPath('home'), '.local', 'share')), 'ATV Remote');
@@ -117,7 +118,7 @@ function configureIpc() {
     handle('input', 'input:keyboard-focus', () => windows.input?.isVisible() && devices.keyboardFocus());
     handle('input', 'input:close', closeInput);
 
-    handle('hotkey', 'hotkey:load', loadHotkeys);
+    handle('hotkey', 'hotkey:load', () => ({ shortcuts: loadHotkeys(), defaultHotkey }));
     handle('hotkey', 'hotkey:save', saveHotkeys, 'Could not save these shortcuts.');
     handle('hotkey', 'hotkey:close', () => windows.hotkey.close());
 }
@@ -225,13 +226,12 @@ function hideRemote() {
 function registerHotkeys() {
     globalShortcut.unregisterAll();
     const toggle = () => windows.remote?.isVisible() ? hideRemote() : showRemote();
-    const defaults = mac ? ['Super+Shift+R', 'Command+Control+R'] : ['Super+Shift+R'];
     let hotkeys = [];
     try { hotkeys = loadHotkeys(); } catch { console.error('Could not load shortcuts.'); }
     const register = key => {
         try { return globalShortcut.register(key, toggle); } catch { return false; }
     };
-    if (!hotkeys.length || !hotkeys.map(register).every(Boolean)) defaults.forEach(register);
+    if (!hotkeys.length || !hotkeys.map(register).every(Boolean)) register(defaultHotkey);
 }
 
 function setUpTrayAnimation() {
@@ -255,7 +255,7 @@ async function showHelp() {
     await dialog.showMessageBox({
         type: 'info', title: 'ATV Remote',
         message: 'Pair your Apple TV to use your Mac as a remote.',
-        detail: 'Drag the grip at the top to move the remote. Press Option to see keyboard controls, or Command+Shift+R to reopen the remote from anywhere.'
+        detail: 'Drag the grip at the top to move the remote. Press Option to see keyboard controls. Click the remote icon in the menu bar whenever you need it.'
     });
     showRemote();
 }

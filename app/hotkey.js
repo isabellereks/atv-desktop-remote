@@ -1,12 +1,5 @@
 const api = window.atv;
 
-async function loadExistingHotkey() {
-    const hotkeys = await api.load();
-    hotkeys.forEach(hotkey => $('#all_hotkeys').append(createOption(hotkey, hotkey)));
-    addHotkeyOption();
-    return hotkeys.length > 0;
-}
-
 function createOption (text, value, selected) {
     if (typeof selected === 'undefined') {
         selected = true;
@@ -124,7 +117,11 @@ $(document).ready(async function() {
         e.preventDefault();
     });
 
-    if (!await loadExistingHotkey()) {
-        $("#hotkeys").val(hotkeysFromParsed("Super+Shift+R")).trigger("change");
+    const { shortcuts, defaultHotkey } = await api.load();
+    document.getElementById('defaultHotkey').textContent = defaultHotkey;
+    shortcuts.forEach(hotkey => $('#all_hotkeys').append(createOption(hotkey, hotkey)));
+    addHotkeyOption();
+    if (shortcuts.length === 0) {
+        $('#hotkeys').val(hotkeysFromParsed(defaultHotkey)).trigger('change');
     }
 });

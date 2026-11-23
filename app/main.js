@@ -1,468 +1,365 @@
-const { app, BrowserWindow, powerMonitor, Tray, Menu, nativeImage, globalShortcut, webContents } = require('electron')
-var win;
-const { ipcMain } = require('electron')
-const path = require('path');
-require('@electron/remote/main').initialize()
-const menubar = require('menubar').menubar;
-const util = require('util');
-var secondWindow;
-process.env['MYPATH'] = path.join(process.env.APPDATA || (process.platform == 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME + "/.local/share"), "ATV Remote");
-const lodash = _ = require('./js/lodash.min');
-const fs = require('fs');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, shell, session } = require('electron');
+const fs = require('node:fs');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { menubar } = require('menubar');
+const { DeviceService } = require('./device-service');
 
-// No longer using Python server - atvjs communicates directly
+const files = { remote: 'index.html', input: 'input.html', hotkey: 'hotkey.html' };
+const urls = Object.fromEntries(Object.entries(files).map(([role, file]) =>
+    [role, pathToFileURL(path.join(__dirname, file)).href]));
+const windows = {};
+const themes = new Set(['systemmode', 'darkmode', 'lightmode']);
+const preferences = { theme: 'systemmode', alwaysOnTop: false, autoKeyboard: true };
+const mac = process.platform === 'darwin';
+const settingsDir = path.join(process.env.APPDATA || (mac
+    ? path.join(app.getPath('home'), 'Library', 'Application Support')
+    : path.join(app.getPath('home'), '.local', 'share')), 'ATV Remote');
+const hotkeyPath = path.join(settingsDir, 'hotkey.txt');
 
-const preloadWindow = true;
-const readyEvent = preloadWindow ? "ready" : "after-create-window";
+let trayApp;
+let inputReady;
+let openingInput = false;
+let quitting = false;
+let keyboardGeneration = 0;
+let lastRemoteShow = 0;
+let trayTimers = [];
+let normalIcon;
+let flashIcon;
 
-const volumeButtons = ['VolumeUp', 'VolumeDown', 'VolumeMute']
+const devices = new DeviceService(() => send('remote', 'devices:connection-lost'));
 
-var handleVolumeButtonsGlobal = false;
-
-var mb;
-var kbHasFocus;
-
-// === Tray icon blink ===
-const BLINK_COUNT      = 4;    // number of on/off cycles per command
-const BLINK_ON_MS      = 20;   // blend icon duration per cycle
-const BLINK_OFF_MS     = 20;   // normal icon duration per cycle
-const FLASH_CLEANUP_MS = 1000; // ensure normal icon this long after last command
-let trayIconNormal = null;
-let trayIconFlash  = null;
-let blinkTimeouts  = [];
-let flashCleanupTimeout = null;
-
-function flashTrayIcon() {
-    if (!trayIconFlash || !mb?.tray) return;
-    blinkTimeouts.forEach(t => clearTimeout(t));
-    blinkTimeouts = [];
-    clearTimeout(flashCleanupTimeout);
-
-    for (let i = 0; i < BLINK_COUNT; i++) {
-        const t = i * (BLINK_ON_MS + BLINK_OFF_MS);
-        blinkTimeouts.push(
-            setTimeout(() => { if (mb?.tray) mb.tray.setImage(trayIconFlash);  }, t),
-            setTimeout(() => { if (mb?.tray) mb.tray.setImage(trayIconNormal); }, t + BLINK_ON_MS)
-        );
-    }
-
-    flashCleanupTimeout = setTimeout(() => {
-        if (mb?.tray) mb.tray.setImage(trayIconNormal);
-    }, FLASH_CLEANUP_MS);
+function send(role, channel, ...args) {
+    const target = windows[role];
+    if (target && !target.isDestroyed()) target.webContents.send(channel, ...args);
 }
 
-// Always register the handler — flashTrayIcon() is a no-op when inactive
-ipcMain.handle('flashTrayIcon', () => flashTrayIcon());
-
-function initTrayAnimation() {
-    if (process.platform !== 'darwin') return;
-    if (!fs.existsSync(path.join(process.env['MYPATH'], 'animate_icon'))) return;
-
-    trayIconNormal = nativeImage.createFromPath(path.join(__dirname, 'images/icon.png'));
-    trayIconFlash  = nativeImage.createFromPath(path.join(__dirname, 'images/icon-dark.png'));
-    trayIconNormal.setTemplateImage(true);
-    console.log('Tray icon animation enabled');
+function webPreferences(role) {
+    return {
+        preload: path.join(__dirname, 'preload.js'),
+        additionalArguments: [`--atv-window=${role}`],
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true
+    };
 }
 
-const _win = process.platform === 'win32';
-const PREFIX_MAIN     = _win ? '[ main ]    ' : '⚙️  ';
-const PREFIX_RENDERER = _win ? '[renderer]  ' : '🖥️  ';
-const REPEAT_SEP      = _win ? 'x'            : '×';
-
-let printRendererOutput = true;
-let lastRendererMsg = null;
-let lastRendererCount = 0;
-let rendererLinePending = false;
-
-function flushRendererLine() {
-    if (rendererLinePending) {
-        process.stdout.write('\n');
-        rendererLinePending = false;
-        lastRendererMsg = null;
-        lastRendererCount = 0;
-    }
+function protectWindow(role, window) {
+    windows[role] = window;
+    const contents = window.webContents;
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    contents.on('will-navigate', event => event.preventDefault());
+    contents.on('will-attach-webview', event => event.preventDefault());
+    window.on('closed', () => {
+        if (windows[role] === window) delete windows[role];
+    });
 }
 
-console._log = console.log;
-console.log = function() {
-    flushRendererLine();
-    let txt = util.format(...[].slice.call(arguments)) + '\n'
-    process.stdout.write(PREFIX_MAIN + txt);
-    if (win && win.webContents) {
-        win.webContents.send('mainLog', txt);
-    }
-}
-
-ipcMain.handle('printRendererOutput', (event, val) => {
-    printRendererOutput = !!val;
-    console.log(`printRendererOutput set to ${printRendererOutput}`);
-});
-
-ipcMain.handle('rendererLog', (event, txt) => {
-    if (!printRendererOutput) return;
-    if (txt === lastRendererMsg) {
-        lastRendererCount++;
-        process.stdout.write(`\r${PREFIX_RENDERER}${txt} ${REPEAT_SEP}${lastRendererCount}`);
-    } else {
-        flushRendererLine();
-        lastRendererMsg = txt;
-        lastRendererCount = 1;
-        process.stdout.write(`${PREFIX_RENDERER}${txt}`);
-        rendererLinePending = true;
-    }
-});
-
-
-
-const gotTheLock = app.requestSingleInstanceLock()
-
-if (!gotTheLock) {
-    app.quit()
-} else {
-    app.on('second-instance', (event, commandLine, workingDirectory) => {
-        console.log('second instance tried to open');
-        showWindow();
-    })
-}
-function createHotkeyWindow() {
-    hotkeyWindow = new BrowserWindow({
-        width: 500,
-        height: 500,
-        webPreferences: {
-            nodeIntegration: true,
-            enableRemoteModule: true,
-            contextIsolation: false
+function handle(role, channel, action, errorMessage = 'ATV Remote could not complete the request.') {
+    ipcMain.handle(channel, async (event, ...args) => {
+        const window = windows[role];
+        if (!window || event.sender !== window.webContents ||
+            event.senderFrame !== event.sender.mainFrame || event.senderFrame.url !== urls[role]) {
+            throw new Error('Unexpected request source.');
+        }
+        try {
+            return await action(...args);
+        } catch {
+            throw new Error(errorMessage);
         }
     });
-    require("@electron/remote/main").enable(hotkeyWindow.webContents);
-    hotkeyWindow.loadFile('hotkey.html');
-    hotkeyWindow.setMenu(null);
-    hotkeyWindow.on('close', (event) => {
+}
+
+function syncPreferences() {
+    windows.remote?.setAlwaysOnTop(preferences.alwaysOnTop);
+    send('remote', 'remote:preferences', preferences);
+    send('input', 'input:preferences', preferences);
+}
+
+function configureIpc() {
+    handle('remote', 'devices:initialize', (...args) => devices.initialize(...args),
+        'Saved pairings are unavailable. Unlock your system keychain and reopen ATV Remote.');
+    handle('remote', 'devices:scan', () => devices.scan(), 'Could not discover Apple TVs on the local network.');
+    handle('remote', 'devices:start-pair', id => devices.startPair(id),
+        'Could not start pairing. Check the local network and unlock your system keychain.');
+    handle('remote', 'devices:finish-pair', pin => devices.finishPair(pin),
+        'Could not pair or save the pairing securely.');
+    handle('remote', 'devices:cancel-pair', () => devices.cancelPair());
+    handle('remote', 'devices:connect', id => devices.connect(id), 'Could not connect to the paired Apple TV.');
+    handle('remote', 'devices:keyboard-focus', () => devices.keyboardFocus());
+
+    handle('remote', 'remote:input-visible', () => Boolean(windows.input?.isVisible()));
+    handle('remote', 'remote:open-input', openInput);
+    handle('remote', 'remote:flash-tray', flashTray);
+    handle('remote', 'remote:hide', hideRemote);
+    handle('remote', 'remote:quit', () => app.quit());
+    handle('remote', 'remote:show-help', showHelp);
+    handle('remote', 'remote:clean-legacy', cleanLegacyFiles);
+    handle('remote', 'remote:set-preferences', (values) => {
+        if (themes.has(values?.theme)) preferences.theme = values.theme;
+        if (typeof values?.alwaysOnTop === 'boolean') preferences.alwaysOnTop = values.alwaysOnTop;
+        if (typeof values?.autoKeyboard === 'boolean') preferences.autoKeyboard = values.autoKeyboard;
+        syncPreferences();
+    });
+    handle('remote', 'remote:command', (key, hold) => devices.sendKey(key, hold));
+
+    handle('input', 'input:text', text => {
+        if (windows.input?.isVisible()) return devices.setText(text);
+    });
+    handle('input', 'input:keyboard-focus', () => windows.input?.isVisible() && devices.keyboardFocus());
+    handle('input', 'input:close', closeInput);
+
+    handle('hotkey', 'hotkey:load', loadHotkeys);
+    handle('hotkey', 'hotkey:save', saveHotkeys, 'Could not save these shortcuts.');
+    handle('hotkey', 'hotkey:close', () => windows.hotkey.close());
+    handle('hotkey', 'hotkey:docs', () => shell.openExternal('https://www.electronjs.org/docs/latest/api/accelerator'));
+}
+
+async function openInput() {
+    if (openingInput || windows.input?.isVisible()) return;
+    openingInput = true;
+    const generation = ++keyboardGeneration;
+    try {
+        await inputReady;
+        if (generation !== keyboardGeneration || !windows.input) return;
+        windows.input.show();
+        send('input', 'input:open', preferences);
+        const value = await devices.getText();
+        if (generation === keyboardGeneration) send('input', 'input:current-text', value);
+    } finally {
+        openingInput = false;
+    }
+}
+
+function closeInput() {
+    send('remote', 'remote:keyboard-closed');
+    showRemote();
+}
+
+function createInputWindow() {
+    const window = new BrowserWindow({
+        show: false, width: 600, height: 250, minimizable: false, maximizable: false,
+        webPreferences: webPreferences('input')
+    });
+    protectWindow('input', window);
+    window.setMenu(null);
+    window.on('hide', () => {
+        keyboardGeneration++;
+        send('input', 'input:close');
+    });
+    window.on('close', event => {
+        if (quitting) return;
         event.preventDefault();
-        hotkeyWindow.hide();
+        closeInput();
+    });
+    window.on('blur', () => {
+        if (window.isVisible() && !preferences.alwaysOnTop && Date.now() - lastRemoteShow >= 100) {
+            closeInput();
+        }
+    });
+    inputReady = window.loadFile(path.join(__dirname, files.input));
+    inputReady.catch(() => console.error('Could not load the keyboard window.'));
+}
+
+function openHotkeyWindow() {
+    if (windows.hotkey) {
+        windows.hotkey.focus();
+        return;
+    }
+    const window = new BrowserWindow({
+        width: 500, height: 500, webPreferences: webPreferences('hotkey')
+    });
+    protectWindow('hotkey', window);
+    window.setMenu(null);
+    window.on('closed', () => { if (!quitting) registerHotkeys(); });
+    window.loadFile(path.join(__dirname, files.hotkey)).catch(() => {
+        console.error('Could not load the shortcuts window.');
+        window.close();
+    });
+}
+
+function loadHotkeys() {
+    try {
+        return fs.readFileSync(hotkeyPath, 'utf8').split(',').map(key => key.trim()).filter(Boolean);
+    } catch (error) {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+    }
+}
+
+function saveHotkeys(hotkeys) {
+    if (!Array.isArray(hotkeys) || hotkeys.length > 32 ||
+        hotkeys.some(key => typeof key !== 'string' || !/^[a-z0-9]+(?:\+[a-z0-9]+)*$/i.test(key) || key.length > 100)) {
+        throw new Error('Invalid shortcuts.');
+    }
+    if (hotkeys.length) {
+        fs.mkdirSync(settingsDir, { recursive: true });
+        fs.writeFileSync(hotkeyPath, hotkeys.join(','), { mode: 0o600 });
+    } else {
+        fs.rmSync(hotkeyPath, { force: true });
+    }
+    windows.hotkey.close();
+}
+
+function showRemote() {
+    if (!windows.remote) return;
+    lastRemoteShow = Date.now();
+    keyboardGeneration++;
+    windows.input?.hide();
+    if (mac) app.show();
+    trayApp.showWindow().catch(() => console.error('Could not open the remote window.'));
+}
+
+function hideRemote() {
+    trayApp.hideWindow();
+    if (mac) app.hide();
+}
+
+function registerHotkeys() {
+    globalShortcut.unregisterAll();
+    const toggle = () => windows.remote?.isVisible() ? hideRemote() : showRemote();
+    const defaults = mac ? ['Super+Shift+R', 'Command+Control+R'] : ['Super+Shift+R'];
+    let hotkeys = [];
+    try { hotkeys = loadHotkeys(); } catch { console.error('Could not load shortcuts.'); }
+    const register = key => {
+        try { return globalShortcut.register(key, toggle); } catch { return false; }
+    };
+    if (!hotkeys.length || !hotkeys.map(register).every(Boolean)) defaults.forEach(register);
+}
+
+function setUpTrayAnimation() {
+    if (!mac || !fs.existsSync(path.join(settingsDir, 'animate_icon'))) return;
+    normalIcon = nativeImage.createFromPath(path.join(__dirname, 'images', 'icon.png'));
+    flashIcon = nativeImage.createFromPath(path.join(__dirname, 'images', 'icon-dark.png'));
+    normalIcon.setTemplateImage(true);
+}
+
+function flashTray() {
+    if (!flashIcon) return;
+    trayTimers.forEach(clearTimeout);
+    trayTimers = [];
+    for (let i = 0; i < 4; i++) {
+        trayTimers.push(setTimeout(() => trayApp.tray.setImage(flashIcon), i * 40));
+        trayTimers.push(setTimeout(() => trayApp.tray.setImage(normalIcon), i * 40 + 20));
+    }
+}
+
+async function showHelp() {
+    await dialog.showMessageBox({
+        type: 'info', title: 'ATV Remote',
+        message: 'Pair your Apple TV to use your Mac as a remote.',
+        detail: 'Press Option in the remote window to see keyboard controls. Use Command+Shift+R to open the remote from anywhere, and right-click the menu bar icon for settings.'
+    });
+    showRemote();
+}
+
+async function cleanLegacyFiles() {
+    const found = ['env', 'wsserver.py', 'start_server.sh', 'start_server.bat', 'atv_pip_install.log']
+        .map(name => path.join(settingsDir, name)).filter(file => fs.existsSync(file));
+    if (!found.length) return 'done';
+    const result = await dialog.showMessageBox({
+        type: 'question', buttons: ['Clean Up', 'Not Now', 'Don’t Ask Again'],
+        defaultId: 1, cancelId: 1, message: 'Remove old app files?',
+        detail: 'Files from the older Python-based version of ATV Remote are no longer needed.'
+    });
+    if (result.response === 2) return 'never';
+    if (result.response === 1) return 'pending';
+    for (const file of found) fs.rmSync(file, { recursive: true, force: true });
+    return 'done';
+}
+
+async function clearData() {
+    const result = await dialog.showMessageBox({
+        type: 'warning', buttons: ['Cancel', 'Clear'], defaultId: 0, cancelId: 0,
+        message: 'Clear all saved data?',
+        detail: 'This will remove saved pairings and preferences. You will need to pair your Apple TV again.'
+    });
+    if (result.response !== 1) return;
+    try {
+        await devices.clear();
+        Object.assign(preferences, { theme: 'systemmode', alwaysOnTop: false, autoKeyboard: true });
+        windows.input?.hide();
+        syncPreferences();
+        send('remote', 'remote:clear-data');
+    } catch {
+        dialog.showErrorBox('ATV Remote', 'Could not clear saved pairings.');
+    }
+}
+
+function showTrayMenu() {
+    const appearance = [
+        ['systemmode', 'Follow system settings'], ['darkmode', 'Dark mode'], ['lightmode', 'Light mode']
+    ].map(([theme, label]) => ({
+        label, type: 'radio', checked: preferences.theme === theme,
+        click: () => { preferences.theme = theme; syncPreferences(); }
+    }));
+    const menu = Menu.buildFromTemplate([
+        { label: 'Always on-top', type: 'checkbox', checked: preferences.alwaysOnTop,
+            click: item => { preferences.alwaysOnTop = item.checked; syncPreferences(); } },
+        { label: 'Automatically open/close keyboard', type: 'checkbox', checked: preferences.autoKeyboard,
+            click: item => { preferences.autoKeyboard = item.checked; syncPreferences(); } },
+        { type: 'separator' },
+        { role: 'about', label: 'About' },
+        { type: 'separator' },
+        { label: 'Appearance', submenu: appearance },
+        { label: 'Change hotkey', click: openHotkeyWindow },
+        { type: 'separator' },
+        { label: 'Clear saved data', click: clearData },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quit' }
+    ]);
+    trayApp.tray.popUpContextMenu(menu);
+}
+
+function createTray() {
+    trayApp = menubar({
+        index: urls.remote, icon: path.join(__dirname, 'IconTemplate.png'),
+        preloadWindow: true, showDockIcon: false,
+        browserWindow: { width: 300, height: 500, webPreferences: webPreferences('remote') }
+    });
+    trayApp.on('before-load', () => {
+        const window = trayApp.window;
+        protectWindow('remote', window);
+        window.on('show', () => {
+            send('remote', 'remote:show');
+        });
+        window.on('hide', () => {
+            send('remote', 'remote:hide');
+        });
+    });
+    trayApp.on('ready', () => {
+        setUpTrayAnimation();
+        trayApp.tray.on('right-click', showTrayMenu);
         registerHotkeys();
     });
 }
 
-function createInputWindow() {
-    secondWindow = new BrowserWindow({ 
-        webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false,
-            enableRemoteModule: true    
-        },
-        hide: true,
-        width: 600, 
-        height: 250,
-        minimizable: false,
-        maximizable: false
-    });
-    require("@electron/remote/main").enable(secondWindow.webContents);
-    secondWindow.loadFile('input.html');
-    secondWindow.on('close', (event) => {
-        event.preventDefault();
-        secondWindow.webContents.send('closeInputWindow');
-        showWindowThrottle();
-    });
-    secondWindow.on("blur", () => {
-        if (mb.window.isAlwaysOnTop()) return;
-        showWindowThrottle();
-    })
-    secondWindow.setMenu(null);
-    secondWindow.hide();
-}
-
-function createWindow() {
-    mb = menubar({
-        preloadWindow: preloadWindow,
-        showDockIcon: false,
-        browserWindow: {
-            width: 300,
-            height: 500,
-            alwaysOnTop: false,
-            webPreferences: {
-                nodeIntegration: true,
-                enableRemoteModule: true,
-                contextIsolation: false
-            }
-        }
-    })
-    global['MB'] = mb;
-    mb.on(readyEvent, () => {
-        require("@electron/remote/main").enable(mb.window.webContents);
-        win = mb.window;
-
-        initTrayAnimation();
-
-        var webContents = win.webContents;
-        createInputWindow()
-       
-
-        win.on('close', () => {
-            console.log('window closed, quitting')
-            app.exit();
-        })
-        win.on('show', () => {
-            win.webContents.send('shortcutWin');
-            win.webContents.send('windowShow');
-            if (handleVolumeButtonsGlobal) handleVolume();
-        })
-
-        win.on('hide', () => {
-            win.webContents.send('windowHide');
-            if (handleVolumeButtonsGlobal) unhandleVolume();
-        })
-
-        win.webContents.on('will-navigate', (e, url) => {
-            console.log(`will-navigate`, url);
-        })
-        ipcMain.on('input-change', (event, data) => {
-            console.log('Received input:', data);
-            win.webContents.send('input-change', data);
-        });
-        ipcMain.handle("loadHotkeyWindow", (event) => {
-            createHotkeyWindow();
-        })
-        ipcMain.handle('debug', (event, arg) => {
-            console.log(`ipcDebug: ${arg}`)
-        })
-        ipcMain.handle('quit', event => {
-            app.exit()
-        });
-        ipcMain.handle('alwaysOnTop', (event, arg) => {
-            var tf = arg == "true";
-            console.log(`setting alwaysOnTop: ${tf}`)
-            mb.window.setAlwaysOnTop(tf);
-            
-        })
-        ipcMain.handle('uimode', (event, arg) => {
-            secondWindow.webContents.send('uimode', arg);
-        });
-
-
-        ipcMain.handle('hideWindow', (event) => {
-            console.log('hiding window');
-            mb.hideWindow();
-        });
-        ipcMain.handle('isProduction', (event) => {
-            return (!process.defaultApp);
-        });
-        ipcMain.handle('isWSRunning', (event, arg) => {
-            console.log('isWSRunning');
-            // atvjs bridge is always ready - no server needed
-            win.webContents.send('wsserver_started')
-        })
-        
-        ipcMain.handle('closeInputOpenRemote', (event, arg) => {
-            console.log('closeInputOpenRemote');
-            win.webContents.send('keyboardWindowClosed');
-            showWindow();
-        })
-        ipcMain.handle('openInputWindow', (event, arg) => {
-            console.log('openInputWindow');
-            secondWindow.show();
-            secondWindow.webContents.send('openInputWindow');
-        });
-        ipcMain.handle('current-text', (event, arg) => {
-            console.log('current-text', arg);
-            secondWindow.webContents.send('current-text', arg);
-        });
-        ipcMain.handle('kbfocus-status', (event, arg) => {
-            secondWindow.webContents.send('kbfocus-status', arg);
-            kbHasFocus = arg;
-        })
-        ipcMain.handle('isInputWindowVisible', () => {
-            return secondWindow && secondWindow.isVisible();
-        });
-        ipcMain.handle('kbfocus', () => {
-            win.webContents.send('kbfocus');
-        })
-
-        powerMonitor.addListener('resume', event => {
-            win.webContents.send('powerResume');
-        })
-
-        win.on('ready-to-show', () => {
-            console.log('ready to show')
-            // atvjs bridge is always ready - send started event
-            win.webContents.send("wsserver_started")
-        })
-    })
-}
-
-function showWindow() {
-    secondWindow.hide();
-    try {
-        app.show();
-    } catch (err) {
-        //console.log(err);
-        // this happens in windows, doesn't seem to affect anything though
-    }
-    mb.showWindow();
-    setTimeout(() => {
-        mb.window.focus();
-    }, 200);
-}
-
-var showWindowThrottle = lodash.throttle(showWindow, 100);
-
-function hideWindow() {
-    mb.hideWindow();
-    try {
-        app.hide();
-    } catch (err) {
-        // console.log(err);
-        // not sure if this affects windows like app.show does.
-    }
-}
-
-function getWorkingPath() {
-    var rp = process.resourcesPath;
-    if (!rp && process.argv.length > 1) rp = path.resolve(process.argv[1]);
-    if (!app.isPackaged) {
-        rp = path.resolve(`${path.dirname(process.argv[1])}/../atv_py_env`)
-    }
-    return rp
-}
-
-function unhandleVolume() {
-    volumeButtons.forEach(btn => {
-        console.log(`unregister: ${btn}`)
-        globalShortcut.unregister(btn);
-    })
-}
-
-function handleVolume() {
-    volumeButtons.forEach(btn => {
-        console.log(`register: ${btn}`)
-        globalShortcut.register(btn, () => {
-            var keys = {
-                "VolumeUp": "volume_up",
-                "VolumeDown": "volume_down",
-                "VolumeMute": "volume_mute"
-            }
-            var key = keys[btn]
-            console.log(`sending ${key} for ${btn}`)
-            win.webContents.send('sendCommand', key);
-        })
-    })
-}
-function registerHotkeys() {
-    var hotkeyPath = path.join(process.env['MYPATH'], "hotkey.txt")
-    try {
+if (!app.requestSingleInstanceLock()) {
+    app.quit();
+} else {
+    app.on('second-instance', showRemote);
+    app.on('activate', showRemote);
+    app.on('before-quit', () => {
+        quitting = true;
+        trayTimers.forEach(clearTimeout);
         globalShortcut.unregisterAll();
-    } catch (err) {
-        console.log(`Error unregistering hotkeys: ${err}`)
-    } 
-    var registered = false;   
-    if (fs.existsSync(hotkeyPath)) {
-        
-        var hotkeys = fs.readFileSync(hotkeyPath, {encoding: 'utf-8'}).trim();
-        if (hotkeys.indexOf(",") > -1) {
-            hotkeys = hotkeys.split(',').map(el => { return el.trim() });
-        } else {
-            hotkeys = [hotkeys];
-        }
-        console.log(`Registering custom hotkeys: ${hotkeys}`)
-        var errs = hotkeys.map(hotkey => {
-            console.log(`Registering hotkey: ${hotkey}`)
-            return globalShortcut.register(hotkey, () => {
-                if (mb.window.isVisible()) {
-                    hideWindow();
-                } else {
-                    showWindow();
-                }
-                win.webContents.send('shortcutWin');
-            })
-        })
-        // var ret = globalShortcut.registerAll(hotkeys, () => {
-        //     if (mb.window.isVisible()) {
-        //         hideWindow();
-        //     } else {
-        //         showWindow();
-        //     }
-        //     win.webContents.send('shortcutWin');
-        // })
-        var ret = errs.every(el => { return el });
-        if (!ret) {
-            errs.forEach((err, idx) => {
-                if (!err) {
-                    console.log(`Error registering hotkey: ${hotkeys[idx]}`)
-                }
-            })
-            console.log(`Error registering hotkeys: ${hotkeys}`)
-        } else {
-            registered =true;
-        }
-    } 
-    if (!registered) {
-        globalShortcut.registerAll(['Super+Shift+R', 'Command+Control+R'], () => {
-            if (mb.window.isVisible()) {
-                hideWindow();
-            } else {
-                showWindow();
-            }
-            win.webContents.send('shortcutWin');
-        })
-    }
-}
-
-app.whenReady().then(() => {
-    // No longer need Python - using atvjs directly
-    createWindow();
-    registerHotkeys();
-   
-    var version = app.getVersion();
-    app.setAboutPanelOptions({
-        applicationName: "ATV Remote",
-        applicationVersion: version,
-        version: version,
-        credits: "Brian Harper",
-        copyright: "Copyright 2026",
-        website: "https://github.com/bsharper",
-        iconPath: "./images/full.png"
+        devices.cancelPair();
+        devices.disconnect();
     });
-})
-
-app.on("before-quit", () => {
-    // No cleanup needed - atvjs connections close automatically
-})
-
-app.on('window-all-closed', () => {
-    app.quit()
-})
-
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow()
-    }
-})
-
-// ── Graceful shutdown ────────────────────────────────────────────────────────
-
-function gracefulShutdown(signal) {
-    console.log(`Received ${signal}, shutting down`);
-    try {
+    app.whenReady().then(() => {
+        session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+        session.defaultSession.setPermissionCheckHandler(() => false);
+        configureIpc();
+        createInputWindow();
+        createTray();
+        powerMonitor.on('resume', () => send('remote', 'remote:resume'));
+        app.setAboutPanelOptions({
+            applicationName: 'ATV Remote', applicationVersion: app.getVersion(), credits: 'Brian Harper',
+            website: 'https://github.com/bsharper/atv-desktop-remote',
+            iconPath: path.join(__dirname, 'images', 'full.png')
+        });
+    }).catch(() => {
+        console.error('ATV Remote could not start.');
         app.quit();
-    } catch (_) {
-        process.exit(0);
-    }
+    });
 }
-
-// SIGTERM: sent by OS on shutdown / service managers on all platforms
-// SIGHUP:  terminal disconnect / session end on macOS/Linux
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-if (process.platform !== 'win32') {
-    process.on('SIGHUP', () => gracefulShutdown('SIGHUP'));
-}
-
-// Log uncaught exceptions before the process dies so the error is visible
-process.on('uncaughtException', (err) => {
-    console.error('Uncaught exception:', err);
-    gracefulShutdown('uncaughtException');
-});
-
-// Log unhandled promise rejections — don't exit, they're usually non-fatal
-process.on('unhandledRejection', (reason) => {
-    console.error('Unhandled rejection:', reason);
-});

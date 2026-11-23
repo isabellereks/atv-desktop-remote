@@ -3,7 +3,7 @@
  * Single source of truth for app state, emits events on transitions.
  */
 
-const EventEmitter = require('events');
+window.atvState = (() => {
 
 // Stale connection timeout in milliseconds
 // Set to 5000 (5 seconds) for testing, change to 3600000 (60 minutes) for production
@@ -29,14 +29,22 @@ const validTransitions = {
     [States.CONNECTED]: [States.SCANNING, States.CONNECTING]
 };
 
-class AppState extends EventEmitter {
+class AppState extends EventTarget {
+    on(name, callback) {
+        this.addEventListener(name, event => callback(event.detail));
+    }
+
+    emit(name, detail) {
+        this.dispatchEvent(new CustomEvent(name, { detail }));
+    }
+
     constructor() {
         super();
         this._state = States.INIT;
         this._connectRetries = 0;
         this._maxRetries = 3;
         this._pairDevice = null;
-        this._credentials = null;
+        this._deviceId = null;
         this._lastActivityTime = Date.now();
     }
 
@@ -75,8 +83,8 @@ class AppState extends EventEmitter {
         return this._pairDevice;
     }
 
-    get credentials() {
-        return this._credentials;
+    get deviceId() {
+        return this._deviceId;
     }
 
     get connectRetries() {
@@ -92,7 +100,7 @@ class AppState extends EventEmitter {
     transition(newState, data = {}) {
         const allowed = validTransitions[this._state];
         if (!allowed || !allowed.includes(newState)) {
-            console.warn(`Invalid state transition: ${this._state} ${process.platform === 'darwin' ? '→' : '->'} ${newState}`);
+            console.warn(`Invalid state transition: ${this._state} → ${newState}`);
             return false;
         }
 
@@ -118,8 +126,8 @@ class AppState extends EventEmitter {
                     // Fresh connection attempt
                     this._connectRetries = 0;
                 }
-                if (data.credentials) {
-                    this._credentials = data.credentials;
+                if (data.deviceId) {
+                    this._deviceId = data.deviceId;
                 }
                 break;
 
@@ -129,7 +137,7 @@ class AppState extends EventEmitter {
                 break;
         }
 
-        console.log(`State: ${oldState} ${process.platform === 'darwin' ? '→' : '->'} ${newState}`, data);
+        console.log(`State: ${oldState} → ${newState}`);
         this.emit('change', { oldState, newState, data });
         this.emit(newState, data);
 
@@ -151,7 +159,7 @@ class AppState extends EventEmitter {
         this._state = States.INIT;
         this._connectRetries = 0;
         this._pairDevice = null;
-        this._credentials = null;
+        this._deviceId = null;
         this.emit('reset');
     }
 }
@@ -159,8 +167,5 @@ class AppState extends EventEmitter {
 // Singleton instance
 const appState = new AppState();
 
-module.exports = {
-    States,
-    appState,
-    STALE_CONNECTION_TIMEOUT
-};
+return { States, appState };
+})();

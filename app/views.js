@@ -4,8 +4,9 @@
  * Subscribes to state changes and updates UI accordingly.
  */
 
-const { States, appState } = require('./state');
-const device = require('./device');
+window.atvViews = (() => {
+const { States, appState } = window.atvState;
+const device = window.atvDevice;
 
 // View name to DOM element mapping
 const viewElements = {
@@ -129,7 +130,6 @@ function showConnectedView() {
 
     setupRemoteButtons();
     setupDeviceDropdown();
-    setupKeyboardLink();
 }
 
 /**
@@ -143,8 +143,10 @@ function createDevicePicker(devices) {
     $('#pairStepNum').html('1');
     $('#pairProtocolName').html('Companion');
     $('#pairingElements').show();
+    $('#pairCodeElements').hide();
+    $('#results').show();
 
-    const options = devices.map(el => ({ id: el, text: el }));
+    const options = devices.map(({ id, label }) => ({ id, text: label }));
     options.unshift({ id: '', text: 'Select a device to pair' });
 
     // Destroy existing select2 if present
@@ -268,36 +270,19 @@ function setupRemoteButtons() {
         }
     });
 
-    // Show/hide keyboard link based on credentials
-    const creds = device.getActiveCredentials();
-    if (creds && (creds.Companion || creds.companion)) {
-        $('#topTextHeader').hide();
-        $('#topTextKBLink').show();
-    } else {
-        $('#topTextHeader').show();
-        $('#topTextKBLink').hide();
-    }
+    $('#topTextHeader').hide();
+    $('#topTextKBLink').show();
 }
 
 /**
  * Setup device dropdown in footer for switching between paired devices
  */
 function setupDeviceDropdown() {
-    const allCreds = device.getAllCredentials();
-    const deviceNames = Object.keys(allCreds);
-    const activeCreds = device.getActiveCredentials();
-
-    let selectedIndex = 0;
-    deviceNames.forEach((name, i) => {
-        if (JSON.stringify(allCreds[name]) === JSON.stringify(activeCreds)) {
-            selectedIndex = i;
-        }
-    });
-
-    const options = deviceNames.map((name, i) => ({
-        id: name,
+    const activeId = device.getActiveId();
+    const options = device.getSavedDevices().map(({ id, name }) => ({
+        id,
         text: name,
-        selected: i === selectedIndex
+        selected: id === activeId
     }));
 
     options.unshift({ id: 'addnew', text: 'Pair another remote' });
@@ -316,20 +301,8 @@ function setupDeviceDropdown() {
         if (selected === 'addnew') {
             appState.transition(States.SCANNING);
         } else if (selected) {
-            const creds = device.getCredentials(selected);
-            device.setActiveCredentials(creds);
-            appState.transition(States.CONNECTING, { credentials: creds });
+            appState.transition(States.CONNECTING, { deviceId: selected });
         }
-    });
-}
-
-/**
- * Setup keyboard link click handler
- */
-function setupKeyboardLink() {
-    $('#topTextKBLink a').off('click').on('click', (e) => {
-        e.preventDefault();
-        window.openKeyboard();
     });
 }
 
@@ -337,14 +310,14 @@ function setupKeyboardLink() {
  * Set status text
  */
 function setStatus(text) {
-    $('#statusText').html(text).show();
+    $('#statusText').text(text).show();
 }
 
 /**
  * Show command feedback with fade animation
  */
 function showCommandFeedback(text) {
-    $('#cmdFade').html(text)
+    $('#cmdFade').text(text)
         .stop(true)
         .fadeOut(0)
         .css({ 'visibility': 'visible' })
@@ -387,7 +360,7 @@ function getLoader() {
     return typeof window.getLoader === 'function' ? window.getLoader() : '';
 }
 
-module.exports = {
+return {
     init,
     showView,
     createDevicePicker,
@@ -397,3 +370,4 @@ module.exports = {
     toggleAltText,
     setupRemoteButtons
 };
+})();

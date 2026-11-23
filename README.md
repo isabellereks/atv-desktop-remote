@@ -5,12 +5,9 @@ A simple menubar app that allows you to control an Apple TV from your desktop
 
 
 
-## Installation 
+## Installation
 
-If you have homebrew installed `brew install atv-remote`
-
-macOS and Windows versions can be downloaded from here: https://github.com/bsharper/atv-desktop-remote/releases
-
+Build this fork from source using the instructions below. The Homebrew cask and upstream release downloads contain the upstream app.
 
 ## Usage
 
@@ -24,22 +21,28 @@ macOS and Windows versions can be downloaded from here: https://github.com/bshar
  
  
  
- ## Running
+## Running
 
- 1. Run `npm i --legacy-peer-deps` (other package manages may also work)
- 2. Run `npm start`
- 3. The application runs in the menubar. Look for a tiny remote icon and click on it. Right-click for more options.
- 4. The first time the app runs it will need to pair with an Apple TV. You can pair with more than one.
- 5. Press `Cmd+Shift+R` to open the application from anywhere. On Windows its `Win+Shift+R`
+Use Node.js 24. On Mac, this fork requires macOS 13 or later.
+
+```sh
+npm ci --legacy-peer-deps
+npm ci --prefix app --legacy-peer-deps
+npm start
+```
+
+Open ATV Remote from the menu bar and select the Apple TV on your local network. Enter the four-digit PIN displayed on the TV. Press Cmd+Shift+R on macOS or Win+Shift+R on Windows to reopen the remote.
 
 ## Building
 
-1. `electron-builder` is used to create a standalone application.
+Use `npm run build-arm` for an Apple Silicon build. A Developer ID-signed macOS distribution requires a signing identity and notarization credentials.
+
+Pairings use Electron's OS-backed encrypted storage. On first launch after an upgrade, the app imports saved pairings from the previous renderer storage and removes the old entries after the encrypted write succeeds.
 
 ## Notes
 
 This is cobbled together from a few projects I've worked on. It works well enough for me for daily use, so I figured others might like it. 
 
-This project is built using [pyatv.](https://pyatv.dev/)
+This project uses [atv-js](https://github.com/bsharper/atvjs) for Apple TV discovery and control.
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/brianharper)

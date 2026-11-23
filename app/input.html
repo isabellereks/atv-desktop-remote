@@ -2,15 +2,13 @@
 <html lang="en">
     
 <head>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'">
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Search field input</title>
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/pure-min.css">
     <link rel="stylesheet" href="css/all.css">
-    <script>
-        window.jQuery = window.$ = require('jquery');
-    </script>
 </head>
 
 <body>
@@ -21,116 +19,7 @@
     <p class="info-text">🟢 = connected device is accepting text input</p>
     <p class="info-text"><span style="opacity: 0.5">⚪️</span> = connected device does not appear to be accepting text input</p>
 
-    <script>
-        document.hidden = true;
-        const electron = require('electron')
-        const remote = require('@electron/remote');
-        const nativeTheme = remote.nativeTheme;
-        const { ipcRenderer } = require('electron');
-        const _util = require('util');
-        const _origConsoleLog = console.log;
-        console.log = function(...args) {
-            _origConsoleLog.apply(console, args);
-            ipcRenderer.invoke('rendererLog', '[input] ' + _util.format(...args)).catch(() => {});
-        };
-        var textInput = document.getElementById('textInput');
-        var kbHasFocus = false;
-        var kbFocusInterval;
-        var windowOpened = false;
-        var kbFocusLostCount = 0;
-        function debounce(fn, delay) {
-            let timeoutID;
-
-            return function (...args) {
-                clearTimeout(timeoutID);
-                timeoutID = setTimeout(() => {
-                    fn.apply(this, args);
-                }, delay);
-            };
-        }
-        function _sendUpdatedText () {
-            ipcRenderer.send('input-change', textInput.value);
-        }
-        var sendUpdatedText = debounce(_sendUpdatedText, 100);
-        
-        function handleDarkMode(uimode) {
-            uimode = uimode || localStorage.getItem("uimode") || "systemmode";
-            console.log(`uimode update: ${uimode}`)
-            var alwaysUseDarkMode = (uimode == "darkmode");
-            var neverUseDarkMode = (uimode == "lightmode");
-
-            if ((nativeTheme.shouldUseDarkColors || alwaysUseDarkMode) && (!neverUseDarkMode)) {
-                $("body").addClass("darkMode");
-            } else {
-                $("body").removeClass("darkMode");
-            }
-        }
-        function checkATVInputState() {
-            console.log(`checkATVInputState: ${windowOpened}`)
-            if (kbFocusInterval) clearInterval(kbFocusInterval);
-            
-            kbFocusInterval = setInterval(() => {
-                if (! windowOpened) {
-                    clearInterval(kbFocusInterval);
-                    return;
-                }
-                ipcRenderer.invoke('kbfocus');
-            }, 1000);
-        }
-
-        ipcRenderer.on('kbfocus-status', (event, arg) => {
-            kbHasFocus = !!(arg);
-            if (kbHasFocus) {
-                kbFocusLostCount = 0;
-                $(".large-text-input-wrapper").removeClass("bad").addClass("good");
-            } else {
-                $(".large-text-input-wrapper").removeClass("good").addClass("bad");
-                kbFocusLostCount++;
-                if (localStorage.getItem('autoKeyboard') !== 'false' && kbFocusLostCount >= 2) {
-                    ipcRenderer.invoke('closeInputOpenRemote');
-                    windowOpened = false;
-                    if (kbFocusInterval) clearInterval(kbFocusInterval);
-                }
-            }
-        })
-
-        ipcRenderer.on('current-text', (event, arg) => {
-            textInput.value = arg;    
-        })
-        ipcRenderer.on('uimode', (event, uimode) => {
-            handleDarkMode(uimode);
-        });
-        ipcRenderer.on('openInputWindow', (event, arg) => {
-            console.log('openInputWindow')
-            windowOpened = true;
-            kbFocusLostCount = 0;
-            textInput.focus();
-            checkATVInputState();
-        });
-        ipcRenderer.on('closeInputWindow', (event, arg) => {
-            windowOpened = false;
-            if (kbFocusInterval) clearInterval(kbFocusInterval);
-        });
-        textInput.addEventListener('input', (event) => {
-            sendUpdatedText();
-        });
-        
-        document.addEventListener('keydown', function(event) {
-            //console.log(`key: ${event.key}, windowOpened: ${windowOpened}`)
-            if (event.key === 'Escape' || event.key === 'Enter') {
-                ipcRenderer.invoke('closeInputOpenRemote');
-                windowOpened = false;
-                if (kbFocusInterval) clearInterval(kbFocusInterval);
-            }
-        });
-        // document.addEventListener('visibilitychange', function() {
-        //     //checkATVInputState();
-        // })
-        window.onload = function() {
-            textInput.focus();
-            handleDarkMode();
-        };
-    </script>
+    <script src="input.js"></script>
 </body>
 </html>
 

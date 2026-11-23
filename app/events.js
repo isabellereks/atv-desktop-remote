@@ -3,15 +3,11 @@
  * Handles all event binding: IPC, keyboard, window events.
  */
 
-const { States, appState } = require('./state');
-const device = require('./device');
-const views = require('./views');
-
-let ipcRenderer;
-let nativeTheme;
-let remote;
-let Menu;
-let mb;
+window.atvEvents = (() => {
+const { States, appState } = window.atvState;
+const device = window.atvDevice;
+const views = window.atvViews;
+const api = window.atv;
 
 // Key mappings
 const keymap = {
@@ -55,113 +51,39 @@ const POLL_MIN_MS   = 250;
 const POLL_MAX_MS   = 1000;
 
 // Platform-aware helpers for keyboard log messages
-const _win = process.platform === 'win32';
+const _win = navigator.platform.startsWith('Win');
 const _kb  = (emoji, label) => _win ? `[kb:${label}]` : `⌨️ ${emoji}`;
-const _arr = process.platform === 'darwin' ? '→' : '->';
+const _arr = _win ? '->' : '→';
 let pollIntervalMs  = POLL_MIN_MS;
 let pollInFlight    = false;
 let nextPollTime    = 0;
 
-let _initialized = false;
-
-/**
- * Initialize events module
- * @param {Object} options - Electron modules
- */
-function init(options = {}) {
-    if (_initialized) {
-        console.warn('events.init() called more than once — ignoring');
-        return;
-    }
-    _initialized = true;
-
-    ipcRenderer = options.ipcRenderer || require('electron').ipcRenderer;
-    remote = options.remote;
-    nativeTheme = options.nativeTheme;
-    Menu = options.Menu;
-    mb = options.mb;
-
-    setupIPC();
-    setupKeyboard();
-    setupWindowEvents();
-    setupDeviceEvents();
-
-    // Expose sendCommand globally for views module
-    window.sendCommand = sendCommand;
-    window.openKeyboard = openKeyboard;
-}
-
-/**
- * Setup IPC event listeners
- */
-function setupIPC() {
-    // Forward renderer console.log to main process stdout (guard against double-wrapping)
-    if (!console._rendererForwardInstalled) {
-        console._rendererForwardInstalled = true;
-        const _util = require('util');
-        const _origConsoleLog = console.log;
-        console.log = function(...args) {
-            _origConsoleLog.apply(console, args);
-            ipcRenderer.invoke('rendererLog', _util.format(...args)).catch(() => {});
-        };
-    }
-
-    ipcRenderer.on('shortcutWin', () => {
+function init() {
+    api.onShow(() => {
         handleDarkMode();
         views.toggleAltText(true);
-    });
-
-    ipcRenderer.on('scanDevicesResult', (event, devices) => {
-        views.createDevicePicker(devices);
-    });
-
-    // Use original console.log to avoid re-forwarding main's own logs back to it
-    ipcRenderer.on('mainLog', (event, txt) => {
-        _origConsoleLog('[ main ] %s', txt.substring(0, txt.length - 1));
-    });
-
-    ipcRenderer.on('powerResume', () => {
-        // Don't attempt reconnect if we're in the middle of pairing
-        if (appState.state === States.PAIRING_1 || appState.state === States.PAIRING_2) {
-            console.log('Power resumed during pairing, ignoring reconnect');
-            return;
-        }
-        // Reconnect after sleep/wake
-        const creds = device.getActiveCredentials();
-        if (creds) {
-            appState.transition(States.CONNECTING, { credentials: creds });
-        }
-    });
-
-    ipcRenderer.on('sendCommand', (event, key) => {
-        console.log(`sendCommand from main: ${key}`);
-        sendCommand(key);
-    });
-
-    ipcRenderer.on('kbfocus', () => {
-        device.getKeyboardFocus().then(focused => {
-            ipcRenderer.invoke('kbfocus-status', focused);
-        });
-    });
-
-    ipcRenderer.on('keyboardWindowClosed', () => {
-        autoKeyboardPrimed = false;
-        autoKeyboardJustClosed = true;
-        console.log(`${_kb('🔒', 'lock')} keyboard window closed by user ${_arr} unprimed`);
-    });
-
-    ipcRenderer.on('windowShow', () => {
         startAutoKeyboardPoll(!autoKeyboardJustClosed);
         autoKeyboardJustClosed = false;
     });
-
-    ipcRenderer.on('windowHide', () => {
-        stopAutoKeyboardPoll();
+    api.onHide(stopAutoKeyboardPoll);
+    api.onResume(reconnect);
+    api.onConnectionLost(reconnect);
+    api.onKeyboardClosed(() => {
+        autoKeyboardPrimed = false;
+        autoKeyboardJustClosed = true;
     });
 
-    ipcRenderer.on('input-change', (event, data) => {
-        device.setText(data);
-    });
+    setupKeyboard();
+    window.addEventListener('blur', () => views.toggleAltText(true));
+    window.addEventListener('focus', checkStaleConnection);
+    window.sendCommand = sendCommand;
+}
+
+function reconnect() {
+    const deviceId = device.getActiveId();
+    if (deviceId && appState.state === States.CONNECTED) {
+        appState.transition(States.CONNECTING, { deviceId });
+    }
 }
 
 /**
@@ -195,14 +117,14 @@ function setupKeyboard() {
         // Quit on triple-q
         if (key === 'q') {
             qPresses++;
-            if (qPresses === 3) ipcRenderer.invoke('quit');
+            if (qPresses === 3) api.quit().catch(() => {});
         } else {
             qPresses = 0;
         }
 
         // Hide window on h
         if (key === 'h') {
-            ipcRenderer.invoke('hideWindow');
+            api.hide();
             return;
         }
 
@@ -212,18 +134,8 @@ function setupKeyboard() {
             return;
         }
 
-        // Handle pairing PIN entry
-        if (!device.isConnected()) {
-            if ($('#pairCode').is(':focus') && key === 'Enter') {
-                submitPairingCode();
-            }
-            return;
-        }
+        if (appState.state !== States.CONNECTED) return;
 
-        // Don't send commands if pairing UI is visible
-        if ($('#cancelPairing').is(':visible')) return;
-
-        // Send mapped key command
         const mappedKey = keymap[key];
         if (mappedKey) {
             sendCommand(key, shifted);
@@ -232,72 +144,8 @@ function setupKeyboard() {
     });
 }
 
-/**
- * Setup window events
- */
-function setupWindowEvents() {
-    window.addEventListener('blur', () => {
-        views.toggleAltText(true);
-    });
-
-    window.addEventListener('focus', () => {
-        checkStaleConnection();
-    });
-
-    window.addEventListener('beforeunload', async (e) => {
-        delete e['returnValue'];
-        try {
-            ipcRenderer.invoke('debug', 'beforeunload called');
-            device.disconnect();
-            ipcRenderer.invoke('debug', 'connection closed');
-        } catch (err) {
-            console.error(err);
-        }
-    });
-}
-
-/**
- * Setup device event listeners
- */
-function setupDeviceEvents() {
-    device.events.on('connected', () => {
-        console.log('Device connected');
-    });
-
-    device.events.on('connection_lost', (error) => {
-        // Don't attempt reconnect if we're in the middle of pairing
-        if (appState.state === States.PAIRING_1 || appState.state === States.PAIRING_2) {
-            console.log('Connection lost during pairing, ignoring reconnect');
-            return;
-        }
-        console.log('Connection lost, attempting reconnect...');
-        const creds = device.getActiveCredentials();
-        if (creds) {
-            appState.transition(States.CONNECTING, { credentials: creds });
-        }
-    });
-}
-
-/**
- * Check if connection is stale and reconnect if needed
- */
 function checkStaleConnection() {
-    // Only check if we're in connected state with valid credentials
-    if (appState.state !== States.CONNECTED) {
-        return;
-    }
-
-    if (!device.hasValidCredentials()) {
-        return;
-    }
-
-    if (appState.isConnectionStale()) {
-        console.log('Connection is stale, triggering reconnect...');
-        const creds = device.getActiveCredentials();
-        if (creds) {
-            appState.transition(States.CONNECTING, { credentials: creds });
-        }
-    }
+    if (appState.state === States.CONNECTED && appState.isConnectionStale()) reconnect();
 }
 
 /**
@@ -308,12 +156,14 @@ function checkStaleConnection() {
 async function sendCommand(key, shifted = false) {
     // Update activity timestamp
     appState.updateActivity();
-    ipcRenderer.invoke('flashTrayIcon').catch(() => {});
+    api.flashTrayIcon().catch(() => {});
 
     if (key === 'Pause') key = 'Space';
 
     let cmd = keymap[key];
     if (Object.values(keymap).includes(key)) cmd = key;
+
+    if (!cmd) return;
 
     // Visual feedback
     let displayKey = cmd;
@@ -328,7 +178,7 @@ async function sendCommand(key, shifted = false) {
 
     try {
         if (shifted) {
-            await device.sendKey(cmd, 'Hold');
+            await device.sendKey(cmd, true);
         } else {
             await device.sendKey(cmd);
         }
@@ -369,7 +219,7 @@ function startAutoKeyboardPoll(prime = true) {
         // Check visibility first — skip the ATV network call if window is already open
         let visible;
         try {
-            visible = await ipcRenderer.invoke('isInputWindowVisible');
+            visible = await api.isInputVisible();
         } catch (err) {
             console.error(`${_kb('❌', 'err')} auto-keyboard poll error (visibility):`, err);
             pollInFlight = false;
@@ -452,41 +302,30 @@ function stopAutoKeyboardPoll() {
  * Open the keyboard input window
  */
 function openKeyboard() {
-    ipcRenderer.invoke('openInputWindow');
-    setTimeout(() => {
-        device.getText().then(text => {
-            ipcRenderer.invoke('current-text', text || '');
-        });
-    }, 10);
+    api.openInput().catch(() => {});
 }
 
-/**
- * Submit pairing code
- */
-function submitPairingCode() {
-    console.log('submitPairingCode called');
+let submittingPin = false;
+
+async function submitPairingCode() {
     const code = $('#pairCode').val();
-    console.log('Code entered:', code, 'Length:', code.length);
+    if (submittingPin || !/^\d{4}$/.test(code)) return;
 
-    if (!code || code.length !== 4) {
-        console.log('Invalid code length, ignoring');
-        return;
-    }
-
+    submittingPin = true;
     $('#pairCode').val('');
-    console.log('Calling finishPair2...');
-    device.finishPair2(code)
-        .then((credentials) => {
-            console.log('finishPair2 succeeded, got credentials');
-            device.saveCredentials(appState.pairDevice, credentials);
-            device.setActiveCredentials(credentials);
-            appState.transition(States.CONNECTING, { credentials });
-        })
-        .catch(err => {
-            console.error('Pairing failed:', err);
-            views.setStatus('Pairing failed - restarting. Check PIN and try again.');
+    try {
+        const deviceId = await device.finishPair(code);
+        if (appState.state === States.PAIRING_1) {
+            appState.transition(States.CONNECTING, { deviceId });
+        }
+    } catch {
+        if (appState.state === States.PAIRING_1) {
+            views.setStatus('Pairing failed. Check the PIN and make sure your system keychain is unlocked.');
             restartPairing();
-        });
+        }
+    } finally {
+        submittingPin = false;
+    }
 }
 
 /**
@@ -498,6 +337,7 @@ function restartPairing() {
         console.log('Restarting pairing for:', deviceName);
         // Small delay to let user see the error message
         setTimeout(() => {
+            if (appState.state !== States.PAIRING_1 || appState.pairDevice !== deviceName) return;
             device.startPair(deviceName)
                 .then(() => {
                     console.log('Pairing restarted successfully');
@@ -522,14 +362,9 @@ function setupPairingHandlers() {
     console.log('Setting up pairing handlers');
 
     // Remove old handlers first (including mouse handlers that could interfere)
-    $('#pairButton').off('click mousedown mouseup');
+    $('#pairButton').off('click');
 
-    // Add mousedown handler (more reliable than click for this context)
-    $('#pairButton').on('mousedown', (e) => {
-        console.log('Pair button mousedown');
-        e.preventDefault();
-        submitPairingCode();
-    });
+    $('#pairButton').on('click', submitPairingCode);
 
     // Also handle Enter key in the input
     $('#pairCode').off('keydown').on('keydown', (e) => {
@@ -545,167 +380,31 @@ function setupPairingHandlers() {
  * Handle dark mode changes
  */
 function handleDarkMode() {
-    if (!nativeTheme) return;
-
-    try {
-        const uimode = localStorage.getItem('uimode') || 'systemmode';
-        const alwaysUseDarkMode = uimode === 'darkmode';
-        const neverUseDarkMode = uimode === 'lightmode';
-
-        const darkModeEnabled = (nativeTheme.shouldUseDarkColors || alwaysUseDarkMode) && !neverUseDarkMode;
-
-        if (darkModeEnabled) {
-            $('body').addClass('darkMode');
-            $('#s2style-sheet').attr('href', 'css/select2-inverted.css');
-            ipcRenderer.invoke('uimode', 'darkmode');
-        } else {
-            $('body').removeClass('darkMode');
-            $('#s2style-sheet').attr('href', 'css/select2.min.css');
-            ipcRenderer.invoke('uimode', 'lightmode');
-        }
-    } catch (err) {
-        console.error('Error setting dark mode:', err);
-    }
-}
-
-/**
- * Setup tray context menu
- */
-function setupContextMenu() {
-    if (!mb || !Menu) return;
-
-    const tray = mb.tray;
     const mode = localStorage.getItem('uimode') || 'systemmode';
-
-    const subMenu = Menu.buildFromTemplate([
-        { type: 'checkbox', id: 'systemmode', click: (e) => setUIMode(e), label: 'Follow system settings', checked: mode === 'systemmode' },
-        { type: 'checkbox', id: 'darkmode', click: (e) => setUIMode(e), label: 'Dark mode', checked: mode === 'darkmode' },
-        { type: 'checkbox', id: 'lightmode', click: (e) => setUIMode(e), label: 'Light mode', checked: mode === 'lightmode' }
-    ]);
-
-    const topChecked = JSON.parse(localStorage.getItem('alwaysOnTopChecked') || 'false');
-    const autoKeyboardChecked = localStorage.getItem('autoKeyboard') !== 'false';
-
-    const contextMenu = Menu.buildFromTemplate([
-        { type: 'checkbox', label: 'Always on-top', click: toggleAlwaysOnTop, checked: topChecked },
-        { type: 'checkbox', label: 'Automatically open/close keyboard', click: toggleAutoKeyboard, checked: autoKeyboardChecked },
-        { type: 'separator' },
-        { role: 'about', label: 'About' },
-        { type: 'separator' },
-        { label: 'Appearance', submenu: subMenu },
-        { label: 'Change hotkey', click: () => ipcRenderer.invoke('loadHotkeyWindow') },
-        { type: 'separator' },
-        { label: 'Clear saved data', click: clearSavedData },
-        { type: 'separator' },
-        { label: 'Quit', click: () => remote.app.quit() }
-    ]);
-
-    tray.removeAllListeners('right-click');
-    tray.on('right-click', () => {
-        mb.tray.popUpContextMenu(contextMenu);
-    });
+    const dark = mode === 'darkmode' || (mode === 'systemmode' &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches);
+    $('body').toggleClass('darkMode', dark);
+    $('#s2style-sheet').attr('href', dark ? 'css/select2-inverted.css' : 'css/select2.min.css');
 }
 
-function setUIMode(event) {
-    localStorage.setItem('uimode', event.id);
-    event.menu.items.forEach(el => {
-        el.checked = el.id === event.id;
-    });
-    setTimeout(handleDarkMode, 1);
-}
-
-function toggleAlwaysOnTop(event) {
-    localStorage.setItem('alwaysOnTopChecked', String(event.checked));
-    ipcRenderer.invoke('alwaysOnTop', String(event.checked));
-}
-
-function toggleAutoKeyboard(event) {
-    localStorage.setItem('autoKeyboard', String(event.checked));
-}
-
-async function clearSavedData() {
-    const result = await remote.dialog.showMessageBox({
-        type: 'warning',
-        buttons: ['Cancel', 'Clear'],
-        defaultId: 0,
-        message: 'Clear all saved data?',
-        detail: 'This will remove all paired devices and preferences. You will need to pair your Apple TV again.',
-    });
-    if (result.response === 1) {
-        localStorage.clear();
-        device.disconnect();
-        appState.reset();
-        appState.transition(States.SCANNING);
-    }
-}
-
-/**
- * Start scanning for devices
- */
-async function startScan() {
-    appState.transition(States.SCANNING);
-
-    try {
-        const devices = await device.scan();
-        views.createDevicePicker(devices);
-    } catch (err) {
-        console.error('Scan failed:', err);
-        views.setStatus('Scan failed. Please try again.');
-    }
-}
-
-/**
- * Start pairing with selected device
- */
-async function startPairing(deviceName) {
-    try {
-        await device.startPair(deviceName);
-        // View update happens via state change
-    } catch (err) {
-        console.error('Start pairing failed:', err);
-        views.setStatus('Could not start pairing. Please try again.');
-        appState.transition(States.SCANNING);
-    }
-}
-
-// Subscribe to state changes that need action
 appState.on(States.SCANNING, () => {
     device.scan().then(devices => {
-        views.createDevicePicker(devices);
+        if (appState.state === States.SCANNING) views.createDevicePicker(devices);
+    }).catch(() => views.setStatus('Scan failed. Check Local Network access in System Settings.'));
+});
+
+appState.on(States.PAIRING_1, ({ device: id }) => {
+    setupPairingHandlers();
+    device.startPair(id).catch(() => {
+        if (appState.state === States.PAIRING_1 && appState.pairDevice === id) {
+            views.setStatus('Could not start pairing. Check Local Network access and unlock your system keychain.');
+        }
     });
 });
 
-appState.on(States.PAIRING_1, (data) => {
-    // Setup button/input handlers for pairing
-    setupPairingHandlers();
-
-    if (data.device) {
-        device.startPair(data.device).catch(err => {
-            console.error('Start pairing failed:', err);
-            views.setStatus('Could not start pairing.');
-        });
-    }
+appState.on(States.CONNECTING, ({ deviceId, retry }) => {
+    if (!retry) device.connectWithRetry(deviceId);
 });
 
-appState.on(States.CONNECTING, (data) => {
-    if (data.credentials) {
-        device.connectWithRetry(data.credentials).catch(err => {
-            console.error('Connection failed after retries');
-            // State machine already transitioned to SCANNING
-        });
-    }
-});
-
-module.exports = {
-    init,
-    sendCommand,
-    openKeyboard,
-    submitPairingCode,
-    setupPairingHandlers,
-    restartPairing,
-    checkStaleConnection,
-    handleDarkMode,
-    setupContextMenu,
-    startScan,
-    startPairing
-};
+return { init, openKeyboard, handleDarkMode };
+})();

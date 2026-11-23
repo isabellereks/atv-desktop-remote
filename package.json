@@ -1,6 +1,6 @@
 {
     "name": "atv-mac-remote",
-    "version": "2.2.1",
+    "version": "2.2.2-security.1",
     "main": "app/main.js",
     "description": "ATV Remote",
     "productName": "ATV Remote",
@@ -12,27 +12,40 @@
             "hardenedRuntime": true,
             "gatekeeperAssess": false,
             "entitlements": "build/entitlements.mac.plist",
-            "entitlementsInherit": "build/entitlements.mac.plist"
+            "entitlementsInherit": "build/entitlements.mac.plist",
+            "minimumSystemVersion": "13.0",
+            "extendInfo": {
+                "NSLocalNetworkUsageDescription": "ATV Remote discovers and controls your Apple TV on your local network."
+            }
+        },
+        "directories": {
+            "app": "app"
+        },
+        "electronFuses": {
+            "runAsNode": false,
+            "enableNodeOptionsEnvironmentVariable": false,
+            "enableNodeCliInspectArguments": false,
+            "enableEmbeddedAsarIntegrityValidation": true,
+            "onlyLoadAppFromAsar": true
         }
     },
     "scripts": {
         "start": "electron app",
-        "postinstall": "electron-builder install-app-deps",
         "fullclean": "npx rimraf node_modules app/node_modules dist",
         "clean": "npx rimraf node_modules app/node_modules",
-        "reset": "npm run clean && npm install --legacy-peer-deps",
+        "reset": "npm run clean && npm ci --legacy-peer-deps && npm ci --prefix app --legacy-peer-deps",
         "build": "npx electron-builder -m",
         "docker-build": "./electron_docker.sh 'npm run build:win'",
         "build:win": "npx electron-builder -w",
         "build-arm": "npx electron-builder -m --arm64"
     },
     "devDependencies": {
-        "electron": "^41.1.0",
-        "electron-builder": "^26.8.2",
+        "electron": "45.4.1",
+        "electron-builder": "26.18.0",
         "rimraf": "^6.1.2"
     },
-    "dependencies": {
-        "@electron/remote": "^2.1.2",
-        "menubar": "^9.5.1"
+    "overrides": {
+        "@electron/universal": "3.0.6",
+        "minimatch@>=10 <11.0.1": "11.0.9"
     }
 }

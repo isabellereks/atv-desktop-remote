@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval';">
 <html>
 
 <head>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ATV Remote</title>
@@ -11,10 +11,8 @@
     <link rel="stylesheet" href="css/pure-min.css">
     <link rel="stylesheet" href="css/all.css">
     <link rel="stylesheet" id="s2style-sheet" href="css/select2-inverted.css">
-    <script>
-        window.jQuery = window.$ = require('jquery');
-        require('./js/select2.min.js')($)
-    </script>
+    <script src="node_modules/jquery/dist/jquery.min.js"></script>
+    <script src="js/select2.min.js"></script>
     <script src="js/tippy-headless.umd.min.js"></script>
     <script src="js/loader.js"></script>
 
@@ -37,7 +35,7 @@
                 <span id="topTextHeader">ATV Remote</span>
             </div>
                 <div id="topTextKBLink">
-                    <div onclick="openKeyboardClick(event)">
+                    <div>
                         <span class="keyTextAlt">K</span>
                         <span class="keyText">Open Keyboard</span>
                     </div>
@@ -65,7 +63,7 @@
                     <div id="pairCodeElements">
                         <label for="pairCode">Enter the 4 digit code here. This will be displayed on the device you selected.<br><span style="font-size:0.8em">Pairing <span id="pairProtocolName">Companion</span> credentials (pairing step <span id="pairStepNum">1</span> of 1)</span>
                         <input id="pairCode" type="text" style="text-align: center" maxlength="4" />
-                    </label><button onclick="javascript:;" class="simpleButton" id="pairButton">Submit</button>
+                    </label><button class="simpleButton" id="pairButton">Submit</button>
                     
                     </div>
                     <button id="cancelPairing" class="simpleButton"><span class="keyText">Cancel</span><span class="keyTextAlt">Cancel</span></button>
@@ -158,6 +156,10 @@
             </div>
         </footer>
     </body>
+    <script src="state.js"></script>
+    <script src="device.js"></script>
+    <script src="views.js"></script>
+    <script src="events.js"></script>
     <script src="web_remote.js"></script>
 
 </html>

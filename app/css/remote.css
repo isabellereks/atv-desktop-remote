@@ -47,7 +47,6 @@ input:focus-visible {
 
 .remote-shell {
     position: relative;
-    isolation: isolate;
     display: flex;
     flex-direction: column;
     inline-size: min(192px, calc(100% - 24px));
@@ -55,20 +54,10 @@ input:focus-visible {
     margin: 8px auto 16px;
     border: 1px solid #939598;
     border-radius: 35px;
-    background:
-        linear-gradient(150deg, #ffffff16, transparent 36%) top / 100% 51% no-repeat,
-        linear-gradient(#373839 0%, #2c2d2e 50.5%, #121213 50.8%, #070708 83%);
+    overflow: hidden;
+    background: linear-gradient(150deg, #ffffff12, transparent 42%),
+        linear-gradient(#38393b, #2c2d2f 53%, #252627);
     box-shadow: inset 0 0 0 1px #ffffff20, inset 0 -1px 2px #ffffff33, 0 5px 14px #0009;
-}
-
-.remote-shell::before {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    inset: 50.7% 1px 1px;
-    border-radius: 0 0 34px 34px;
-    background: linear-gradient(62deg, transparent 31%, #ffffff0b 31.4%, #ffffff1e 71%, #ffffff0c);
-    pointer-events: none;
 }
 
 .drag-grip {
@@ -90,21 +79,23 @@ input:focus-visible {
 }
 
 .remote-controls {
-    position: relative;
-    padding: 2px 14px 15px;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    padding-top: 2px;
 }
 
 .touch-surface {
     display: grid;
     grid-template: 1fr 61px 1fr / 1fr 61px 1fr;
     block-size: 173px;
-    margin: 9px 0 12px;
+    margin: 9px 14px 13px;
     padding: 3px;
-    border: 1px solid #ffffff14;
+    border: 1px solid #ffffff13;
     border-radius: 24px;
-    background: linear-gradient(145deg, #191a1b, #262728);
+    background: linear-gradient(145deg, #242527, #212224);
     touch-action: none;
-    box-shadow: inset 0 1px 5px #0005, 0 1px #ffffff12;
+    box-shadow: inset 0 1px 3px #0004;
 }
 
 .touch-key {
@@ -114,11 +105,11 @@ input:focus-visible {
     border: 0;
     border-radius: 12px;
     background: transparent;
-    color: #d0d1d3;
+    color: #bfc1c4;
 }
 
 .touch-key i {
-    font-size: 11px;
+    font-size: 9px;
 }
 
 .touch-up {
@@ -131,10 +122,6 @@ input:focus-visible {
 
 .touch-select {
     grid-area: 2 / 2;
-    border: 1px solid #ffffff2d;
-    border-radius: 50%;
-    background: linear-gradient(155deg, #ffffff13, #0000001a);
-    box-shadow: 0 1px 3px #0005, inset 0 1px #ffffff10;
 }
 
 .touch-right {
@@ -145,12 +132,19 @@ input:focus-visible {
     grid-area: 3 / 1 / 4 / 4;
 }
 
-.select-mark {
-    inline-size: 6px;
-    block-size: 6px;
-    border-radius: 50%;
-    background: #c7c8ca;
-    box-shadow: 0 1px 1px #000;
+.select-label {
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.control-dock {
+    flex: 1;
+    padding: 15px 14px 13px;
+    border-top: 1px solid #ffffff12;
+    background:
+        linear-gradient(62deg, transparent 31%, #ffffff08 31.4%, #ffffff16 72%, #ffffff08),
+        linear-gradient(#161618, #080809 75%);
+    box-shadow: inset 1px 0 #ffffff12, inset -1px 0 #ffffff12, inset 0 -1px #ffffff18;
 }
 
 .button-deck {
@@ -300,16 +294,37 @@ input:focus-visible {
 
 .device-picker {
     position: relative;
-    padding-inline: 4px;
+    align-self: center;
+    max-inline-size: calc(100% - 28px);
+    color: #e8e8e9;
+}
+
+.device-icon {
+    position: absolute;
+    z-index: 2;
+    inset: 9px auto auto 9px;
+    inline-size: 12px;
+    block-size: 8px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.device-icon::after {
+    content: "";
+    position: absolute;
+    inset: auto 2px -3px;
+    border-bottom: 1px solid currentColor;
 }
 
 .device-picker::after {
     content: "";
     position: absolute;
-    inset: 12px 13px auto auto;
+    z-index: 2;
+    inset: 10px 11px auto auto;
     inline-size: 5px;
     block-size: 5px;
-    border: solid #bdbdbf;
+    border: solid #c6c7c9;
     border-width: 0 1px 1px 0;
     transform: rotate(45deg);
     pointer-events: none;
@@ -317,21 +332,23 @@ input:focus-visible {
 
 .device-picker select {
     appearance: none;
+    field-sizing: content;
     display: block;
-    inline-size: 100%;
-    min-block-size: 34px;
-    padding: 4px 23px 4px 10px;
-    border: 1px solid #ffffff25;
-    border-radius: 12px;
-    background: #202022;
-    color: #ededee;
+    max-inline-size: 100%;
+    min-block-size: 28px;
+    padding: 0 24px 0 28px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
     text-overflow: ellipsis;
-    font-size: 11px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: -.012em;
 }
 
 .device-picker select:hover {
-    background: #2a2a2c;
+    background: #ffffff10;
 }
 
 .pair-screen {

@@ -38,6 +38,7 @@
 
         <section id="runningElements" class="remote-controls" aria-label="Apple TV controls" hidden>
             <div class="device-picker">
+                <span class="device-icon" aria-hidden="true"></span>
                 <select id="remoteDropdown" aria-label="Paired Apple TV"></select>
             </div>
             <div class="touch-surface" role="group" aria-label="Directional pad">
@@ -48,7 +49,7 @@
                     <i class="fas fa-chevron-left" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">←</span>
                 </button>
                 <button class="touch-key touch-select" data-key="select" type="button" aria-label="Select" title="Select (Return)">
-                    <span class="select-mark" aria-hidden="true"></span><span class="shortcut" aria-hidden="true">↵</span>
+                    <span class="select-label" aria-hidden="true">Select</span><span class="shortcut" aria-hidden="true">↵</span>
                 </button>
                 <button class="touch-key touch-right" data-key="right" type="button" aria-label="Right" title="Right (→)">
                     <i class="fas fa-chevron-right" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">→</span>
@@ -58,40 +59,42 @@
                 </button>
             </div>
 
-            <div class="button-deck" role="group" aria-label="Playback and volume">
-                <button class="round-key menu-key" data-key="menu" type="button" aria-label="Menu" title="Menu (Esc or Delete)">
-                    <span class="key-label" aria-hidden="true">Menu</span><span class="shortcut" aria-hidden="true">Esc</span>
-                </button>
-                <button class="round-key" data-key="home" type="button" aria-label="TV" title="TV (T). Hold for Control Center (L).">
-                    <i class="fas fa-tv" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">T/L</span>
-                </button>
-                <button class="round-key keyboard-key" id="topTextKBLink" type="button" aria-label="Open keyboard" title="Open keyboard (K)">
-                    <i class="fas fa-keyboard" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">K</span>
-                </button>
-                <div class="volume-rocker" role="group" aria-label="Volume">
-                    <button data-key="volume_up" type="button" aria-label="Volume up" title="Volume up (+)">
-                        <span class="volume-mark" aria-hidden="true">+</span><span class="shortcut" aria-hidden="true">+</span>
+            <div class="control-dock">
+                <div class="button-deck" role="group" aria-label="Playback and volume">
+                    <button class="round-key menu-key" data-key="menu" type="button" aria-label="Menu" title="Menu (Esc or Delete)">
+                        <span class="key-label" aria-hidden="true">Menu</span><span class="shortcut" aria-hidden="true">Esc</span>
                     </button>
-                    <button data-key="volume_down" type="button" aria-label="Volume down" title="Volume down (−)">
-                        <span class="volume-mark" aria-hidden="true">−</span><span class="shortcut" aria-hidden="true">−</span>
+                    <button class="round-key" data-key="home" type="button" aria-label="TV" title="TV (T). Hold for Control Center (L).">
+                        <i class="fas fa-tv" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">T/L</span>
+                    </button>
+                    <button class="round-key keyboard-key" id="topTextKBLink" type="button" aria-label="Open keyboard" title="Open keyboard (K)">
+                        <i class="fas fa-keyboard" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">K</span>
+                    </button>
+                    <div class="volume-rocker" role="group" aria-label="Volume">
+                        <button data-key="volume_up" type="button" aria-label="Volume up" title="Volume up (+)">
+                            <span class="volume-mark" aria-hidden="true">+</span><span class="shortcut" aria-hidden="true">+</span>
+                        </button>
+                        <button data-key="volume_down" type="button" aria-label="Volume down" title="Volume down (−)">
+                            <span class="volume-mark" aria-hidden="true">−</span><span class="shortcut" aria-hidden="true">−</span>
+                        </button>
+                    </div>
+                    <button class="round-key play-key" data-key="play_pause" type="button" aria-label="Play or pause" title="Play or pause (Space)">
+                        <span class="play-mark" aria-hidden="true"><i class="fas fa-play"></i><i class="fas fa-pause"></i></span>
+                        <span class="shortcut" aria-hidden="true">Space</span>
                     </button>
                 </div>
-                <button class="round-key play-key" data-key="play_pause" type="button" aria-label="Play or pause" title="Play or pause (Space)">
-                    <span class="play-mark" aria-hidden="true"><i class="fas fa-play"></i><i class="fas fa-pause"></i></span>
-                    <span class="shortcut" aria-hidden="true">Space</span>
-                </button>
-            </div>
 
-            <div class="seek-keys" role="group" aria-label="Skip playback">
-                <button data-key="skip_backward" type="button" aria-label="Skip backward" title="Skip backward ([)">
-                    <i class="fas fa-step-backward" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">[</span>
-                </button>
-                <button data-key="skip_forward" type="button" aria-label="Skip forward" title="Skip forward (])">
-                    <i class="fas fa-step-forward" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">]</span>
-                </button>
-            </div>
+                <div class="seek-keys" role="group" aria-label="Skip playback">
+                    <button data-key="skip_backward" type="button" aria-label="Skip backward" title="Skip backward ([)">
+                        <i class="fas fa-step-backward" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">[</span>
+                    </button>
+                    <button data-key="skip_forward" type="button" aria-label="Skip forward" title="Skip forward (])">
+                        <i class="fas fa-step-forward" aria-hidden="true"></i><span class="shortcut" aria-hidden="true">]</span>
+                    </button>
+                </div>
 
-            <p id="cmdFade" class="command-feedback" aria-hidden="true"></p>
+                <p id="cmdFade" class="command-feedback" aria-hidden="true"></p>
+            </div>
         </section>
     </main>
 </body>

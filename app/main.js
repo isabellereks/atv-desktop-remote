@@ -362,7 +362,6 @@ function createTray() {
         const icon = nativeImage.createFromPath(path.join(__dirname, 'images', 'icon.png'));
         icon.setTemplateImage(true);
         tray = new Tray(icon, menuBarItemId);
-        tray.setTitle('ATV');
     }
     trayApp = menubar({
         index: urls.remote, icon: path.join(__dirname, 'IconTemplate.png'), tray,

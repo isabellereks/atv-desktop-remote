@@ -33,7 +33,7 @@ npm ci --prefix app --legacy-peer-deps
 npm start
 ```
 
-Click **ATV** in the macOS menu bar to open the remote, then select the Apple TV on your local network. Enter the four-digit PIN displayed on the TV. Press Cmd+Shift+R on macOS or Win+Shift+R on Windows to reopen the remote.
+Click the remote icon in the macOS menu bar to open the remote, then select the Apple TV on your local network. Enter the four-digit PIN displayed on the TV. Press Cmd+Shift+R on macOS or Win+Shift+R on Windows to reopen the remote.
 
 ## Building
 

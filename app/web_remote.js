@@ -23,11 +23,16 @@ $(async () => {
     });
 
     $('#topTextKBLink').on('click', events.openKeyboard);
-    $('#exitLink').on('click', () => api.quit().catch(() => {}));
+    $('#scanAgain').on('click', events.scanForDevices);
     $('#cancelPairing').on('click', async () => {
         try {
             await device.cancelPair();
-            appState.transition(States.SCANNING);
+            const deviceId = device.getActiveId();
+            if (deviceId) {
+                appState.transition(States.CONNECTING, { deviceId });
+            } else {
+                appState.transition(States.SCANNING);
+            }
         } catch {
             views.setStatus('Could not cancel pairing.');
         }
@@ -42,8 +47,6 @@ $(async () => {
         });
         await device.load();
     } catch {
-        $('#initText').hide();
-        $('#runningElements').show();
         views.setStatus('Saved pairings are unavailable. Unlock your system keychain and reopen ATV Remote.');
         return;
     }

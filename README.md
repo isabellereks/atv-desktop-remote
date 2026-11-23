@@ -13,7 +13,9 @@ Build this fork from source using the instructions below. The Homebrew cask and 
 
  1. Keys are mapped to the keyboard when the application is open (pressing return or enter on the keyboard for select, delete for Menu, etc).
  2. Press `Option`, or `Alt` on Windows, to see what the characters are mapped to when the application is open.
- 3. Long press buttons now works to simulate long presses on the remote
+ 3. Hold the TV button to open Control Center.
+ 4. Swipe over the navigation pad with a trackpad or drag across it with a mouse.
+ 5. Drag the grip at the top to move the window. The remote remembers its position.
  
  <p align="center">
   <img src="buttonpress.gif" alt="long press button animation" width="200"/>

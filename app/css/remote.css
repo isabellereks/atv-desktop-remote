@@ -1,0 +1,414 @@
+:root {
+    color-scheme: dark;
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --ink: #f5f5f4;
+    --muted: #b6b6b7;
+    --focus: #a4d0ff;
+    --button-size: 52px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+body {
+    margin: 0;
+    min-inline-size: 0;
+    color: var(--ink);
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+    font: inherit;
+}
+
+button,
+select {
+    cursor: pointer;
+    color: inherit;
+    -webkit-app-region: no-drag;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+    position: relative;
+    z-index: 1;
+    outline: 2px solid var(--focus);
+    outline-offset: -3px;
+}
+
+.remote-shell {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    inline-size: min(192px, calc(100% - 24px));
+    min-block-size: 521px;
+    margin: 8px auto 16px;
+    border: 1px solid #939598;
+    border-radius: 35px;
+    background:
+        linear-gradient(150deg, #ffffff16, transparent 36%) top / 100% 51% no-repeat,
+        linear-gradient(#373839 0%, #2c2d2e 50.5%, #121213 50.8%, #070708 83%);
+    box-shadow: inset 0 0 0 1px #ffffff20, inset 0 -1px 2px #ffffff33, 0 5px 14px #0009;
+}
+
+.remote-shell::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 50.7% 1px 1px;
+    border-radius: 0 0 34px 34px;
+    background: linear-gradient(62deg, transparent 31%, #ffffff0b 31.4%, #ffffff1e 71%, #ffffff0c);
+    pointer-events: none;
+}
+
+.drag-grip {
+    display: grid;
+    place-items: center;
+    flex: 0 0 33px;
+    cursor: grab;
+    margin: 0 15px;
+    -webkit-app-region: drag;
+    app-region: drag;
+}
+
+.drag-grip span {
+    inline-size: 30px;
+    block-size: 5px;
+    border-radius: 5px;
+    background: #171819;
+    box-shadow: inset 0 1px 2px #000, 0 1px #ffffff35;
+}
+
+.remote-controls {
+    position: relative;
+    padding: 2px 14px 15px;
+}
+
+.touch-surface {
+    display: grid;
+    grid-template: 1fr 61px 1fr / 1fr 61px 1fr;
+    block-size: 173px;
+    margin: 9px 0 12px;
+    padding: 3px;
+    border: 1px solid #ffffff14;
+    border-radius: 24px;
+    background: linear-gradient(145deg, #191a1b, #262728);
+    touch-action: none;
+    box-shadow: inset 0 1px 5px #0005, 0 1px #ffffff12;
+}
+
+.touch-key {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: #d0d1d3;
+}
+
+.touch-key i {
+    font-size: 11px;
+}
+
+.touch-up {
+    grid-area: 1 / 1 / 2 / 4;
+}
+
+.touch-left {
+    grid-area: 2 / 1;
+}
+
+.touch-select {
+    grid-area: 2 / 2;
+    border: 1px solid #ffffff2d;
+    border-radius: 50%;
+    background: linear-gradient(155deg, #ffffff13, #0000001a);
+    box-shadow: 0 1px 3px #0005, inset 0 1px #ffffff10;
+}
+
+.touch-right {
+    grid-area: 2 / 3;
+}
+
+.touch-down {
+    grid-area: 3 / 1 / 4 / 4;
+}
+
+.select-mark {
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+    background: #c7c8ca;
+    box-shadow: 0 1px 1px #000;
+}
+
+.button-deck {
+    display: grid;
+    grid-template-columns: repeat(2, var(--button-size));
+    grid-template-rows: repeat(3, var(--button-size));
+    justify-content: center;
+    column-gap: 25px;
+    row-gap: 10px;
+}
+
+.round-key,
+.volume-rocker {
+    border: 1px solid #0b0b0c;
+    background: linear-gradient(160deg, #353637, #292a2b 55%, #1b1b1c);
+    box-shadow: inset 0 1px #ffffff43, inset 0 -2px #0006, 0 2px 3px #0008;
+}
+
+.round-key {
+    display: grid;
+    place-items: center;
+    inline-size: var(--button-size);
+    block-size: var(--button-size);
+    padding: 0;
+    border-radius: 50%;
+    text-shadow: 0 1px 1px #0009;
+}
+
+.round-key > i {
+    font-size: 17px;
+}
+
+.menu-key {
+    border: 2px solid #e0e1e2;
+    box-shadow: inset 0 0 0 1px #0b0b0c, 0 2px 4px #0009;
+}
+
+.menu-key .key-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.keyboard-key {
+    grid-area: 2 / 1;
+}
+
+.play-key {
+    grid-area: 3 / 1;
+}
+
+.play-mark {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+}
+
+.volume-rocker {
+    grid-area: 2 / 2 / 4 / 3;
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    border-radius: 29px;
+    overflow: hidden;
+}
+
+.volume-rocker button {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 24px;
+    background: transparent;
+}
+
+.volume-mark {
+    font-size: 24px;
+    font-weight: 300;
+    line-height: 1;
+}
+
+.seek-keys {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 9px;
+}
+
+.seek-keys button {
+    inline-size: 41px;
+    block-size: 31px;
+    border: 1px solid #ffffff1e;
+    border-radius: 14px;
+    background: #242425;
+    color: #d6d6d7;
+    font-size: 10px;
+}
+
+.touch-key:hover,
+.volume-rocker button:hover {
+    background-color: #ffffff17;
+}
+
+.round-key:hover,
+.seek-keys button:hover {
+    filter: brightness(1.22);
+}
+
+.remote-controls button {
+    transition: background-color 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.remote-controls button:active,
+.remote-controls button.is-pressed {
+    background: #505153;
+    box-shadow: inset 0 2px 5px #0009;
+    filter: brightness(1.13);
+}
+
+.shortcut {
+    display: none;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.show-shortcuts .remote-controls button > :not(.shortcut) {
+    display: none;
+}
+
+.show-shortcuts .shortcut {
+    display: inline;
+}
+
+.command-feedback {
+    block-size: 17px;
+    margin: 0;
+    color: var(--muted);
+    text-align: center;
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+.command-feedback.visible {
+    opacity: 1;
+}
+
+.device-picker {
+    position: relative;
+    padding-inline: 4px;
+}
+
+.device-picker::after {
+    content: "";
+    position: absolute;
+    inset: 12px 13px auto auto;
+    inline-size: 5px;
+    block-size: 5px;
+    border: solid #bdbdbf;
+    border-width: 0 1px 1px 0;
+    transform: rotate(45deg);
+    pointer-events: none;
+}
+
+.device-picker select {
+    appearance: none;
+    display: block;
+    inline-size: 100%;
+    min-block-size: 34px;
+    padding: 4px 23px 4px 10px;
+    border: 1px solid #ffffff25;
+    border-radius: 12px;
+    background: #202022;
+    color: #ededee;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.device-picker select:hover {
+    background: #2a2a2c;
+}
+
+.pair-screen {
+    margin: 28px 13px 0;
+    padding: 12px;
+    border-radius: 16px;
+    background: #f3f3f2;
+    color: #171718;
+    color-scheme: light;
+}
+
+.darkMode .pair-screen {
+    background: #202022;
+    color: var(--ink);
+    color-scheme: dark;
+}
+
+.pair-screen h1 {
+    margin: 0 0 10px;
+    font-size: 18px;
+    line-height: 1.2;
+    letter-spacing: -.025em;
+}
+
+#statusText {
+    margin: 0 0 14px;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+#statusText:empty {
+    display: none;
+}
+
+.pair-screen label {
+    display: block;
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.pair-screen select,
+.pair-screen input,
+.setup-button {
+    inline-size: 100%;
+    min-block-size: 35px;
+    border: 1px solid currentColor;
+    border-radius: 7px;
+    background: transparent;
+    color: inherit;
+}
+
+.pair-screen input {
+    padding: 5px;
+    text-align: center;
+    font-size: 18px;
+    font-variant-numeric: tabular-nums;
+}
+
+.setup-button {
+    margin-top: 8px;
+    padding: 5px;
+    font-size: 12px;
+}
+
+.setup-button.primary {
+    background: #28282a;
+    color: #fff;
+}
+
+.darkMode .setup-button.primary {
+    background: #e0e0e2;
+    color: #151516;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        transition: none !important;
+    }
+}

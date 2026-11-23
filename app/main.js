@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, shell, session } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, screen, shell, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -16,10 +16,13 @@ const settingsDir = path.join(process.env.APPDATA || (mac
     ? path.join(app.getPath('home'), 'Library', 'Application Support')
     : path.join(app.getPath('home'), '.local', 'share')), 'ATV Remote');
 const hotkeyPath = path.join(settingsDir, 'hotkey.txt');
+const remoteSize = { width: 218, height: 554 };
 
 let trayApp;
 let inputReady;
 let openingInput = false;
+let remotePosition;
+let positionTimer;
 let quitting = false;
 let keyboardGeneration = 0;
 let lastRemoteShow = 0;
@@ -248,7 +251,7 @@ async function showHelp() {
     await dialog.showMessageBox({
         type: 'info', title: 'ATV Remote',
         message: 'Pair your Apple TV to use your Mac as a remote.',
-        detail: 'Press Option in the remote window to see keyboard controls. Use Command+Shift+R to open the remote from anywhere, and right-click the menu bar icon for settings.'
+        detail: 'Drag the grip at the top to move the remote. Press Option to see keyboard controls, or Command+Shift+R to reopen the remote from anywhere.'
     });
     showRemote();
 }
@@ -277,6 +280,12 @@ async function clearData() {
     if (result.response !== 1) return;
     try {
         await devices.clear();
+        clearTimeout(positionTimer);
+        remotePosition = undefined;
+        fs.rmSync(remotePositionPath(), { force: true });
+        const browserWindow = trayApp.getOption('browserWindow');
+        delete browserWindow.x;
+        delete browserWindow.y;
         Object.assign(preferences, { theme: 'systemmode', alwaysOnTop: false, autoKeyboard: true });
         windows.input?.hide();
         syncPreferences();
@@ -311,15 +320,56 @@ function showTrayMenu() {
     trayApp.tray.popUpContextMenu(menu);
 }
 
+function loadRemotePosition() {
+    try {
+        const { x, y } = JSON.parse(fs.readFileSync(remotePositionPath(), 'utf8'));
+        if (Number.isInteger(x) && Number.isInteger(y)) return { x, y };
+    } catch {
+        // A missing or damaged preference falls back to the tray position.
+    }
+}
+
+function remotePositionPath() {
+    return path.join(app.getPath('userData'), 'remote-position.json');
+}
+
+function saveRemotePosition() {
+    clearTimeout(positionTimer);
+    if (!remotePosition) return;
+    try {
+        fs.writeFileSync(remotePositionPath(), JSON.stringify(remotePosition), { mode: 0o600 });
+    } catch {
+        console.warn('Could not save the remote position.');
+    }
+}
+
+function restoreRemotePosition() {
+    if (!remotePosition) return;
+    const { x, y, width, height } = screen.getDisplayMatching({ ...remotePosition, ...remoteSize }).workArea;
+    const browserWindow = trayApp.getOption('browserWindow');
+    browserWindow.x = Math.max(x, Math.min(remotePosition.x, x + width - remoteSize.width));
+    browserWindow.y = Math.max(y, Math.min(remotePosition.y, y + height - remoteSize.height));
+}
+
 function createTray() {
+    remotePosition = loadRemotePosition();
     trayApp = menubar({
         index: urls.remote, icon: path.join(__dirname, 'IconTemplate.png'),
         preloadWindow: true, showDockIcon: false,
-        browserWindow: { width: 300, height: 500, webPreferences: webPreferences('remote') }
+        browserWindow: {
+            ...remoteSize, transparent: true, resizable: false, hasShadow: false,
+            backgroundColor: '#00000000', webPreferences: webPreferences('remote')
+        }
     });
+    trayApp.on('show', restoreRemotePosition);
     trayApp.on('before-load', () => {
         const window = trayApp.window;
         protectWindow('remote', window);
+        window.on('will-move', (_event, { x, y }) => {
+            remotePosition = { x, y };
+            clearTimeout(positionTimer);
+            positionTimer = setTimeout(saveRemotePosition, 200);
+        });
         window.on('show', () => {
             send('remote', 'remote:show');
         });
@@ -341,6 +391,7 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', showRemote);
     app.on('before-quit', () => {
         quitting = true;
+        if (positionTimer) saveRemotePosition();
         trayTimers.forEach(clearTimeout);
         globalShortcut.unregisterAll();
         devices.cancelPair();

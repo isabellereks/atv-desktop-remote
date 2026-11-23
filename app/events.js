@@ -33,11 +33,20 @@ const keymap = {
 };
 
 const keyDescriptions = {
-    'volume_down': 'Lower Volume',
-    'volume_up': 'Raise Volume',
-    'play_pause': 'play/pause',
-    'home': 'TV',
-    'home_hold': 'TV long press'
+    up: 'Up',
+    down: 'Down',
+    left: 'Left',
+    right: 'Right',
+    select: 'Select',
+    menu: 'Menu',
+    top_menu: 'Top menu',
+    volume_down: 'Volume down',
+    volume_up: 'Volume up',
+    play_pause: 'Play / Pause',
+    skip_backward: 'Skip back',
+    skip_forward: 'Skip forward',
+    home: 'TV',
+    home_hold: 'Control Center'
 };
 
 let qPresses = 0;
@@ -76,7 +85,6 @@ function init() {
     setupKeyboard();
     window.addEventListener('blur', () => views.toggleAltText(true));
     window.addEventListener('focus', checkStaleConnection);
-    window.sendCommand = sendCommand;
 }
 
 function reconnect() {
@@ -96,50 +104,34 @@ function setupKeyboard() {
         }
     });
 
-    window.addEventListener('keydown', (e) => {
-        let key = e.key;
-        if (key === ' ') key = 'Space';
-
-        const mods = ['Control', 'Shift', 'Alt', 'Option', 'Fn', 'Hyper', 'OS', 'Super', 'Meta', 'Win']
-            .filter(mod => e.getModifierState(mod));
-
-        if (mods.length > 0 && mods[0] === 'Alt') {
+    window.addEventListener('keydown', event => {
+        if (event.altKey || event.key === 'Alt') {
             views.toggleAltText(false);
+            return;
         }
+        if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest('input, select, textarea, [contenteditable]')) return;
+        if (target?.closest('button') && (event.key === 'Enter' || event.key === ' ')) return;
 
-        let shifted = false;
-        if (mods.length === 1 && mods[0] === 'Shift') {
-            shifted = true;
-        } else if (mods.length > 0) {
-            return; // Don't handle keys with other modifiers
-        }
+        let key = event.key;
+        if (key.length === 1) key = key === ' ' ? 'Space' : key.toLowerCase();
 
-        // Quit on triple-q
-        if (key === 'q') {
-            qPresses++;
-            if (qPresses === 3) api.quit().catch(() => {});
-        } else {
+        if (key === 'q' && !event.repeat) {
+            if (++qPresses === 3) api.quit().catch(() => {});
+        } else if (key !== 'q') {
             qPresses = 0;
         }
-
-        // Hide window on h
         if (key === 'h') {
-            api.hide();
+            api.hide().catch(() => {});
             return;
         }
-
-        // Open keyboard on k
+        if (appState.state !== States.CONNECTED) return;
         if (key === 'k') {
             openKeyboard();
-            return;
-        }
-
-        if (appState.state !== States.CONNECTED) return;
-
-        const mappedKey = keymap[key];
-        if (mappedKey) {
-            sendCommand(key, shifted);
-            e.preventDefault();
+        } else if (Object.hasOwn(keymap, key)) {
+            sendCommand(key, event.shiftKey);
+            event.preventDefault();
         }
     });
 }
@@ -154,36 +146,20 @@ function checkStaleConnection() {
  * @param {boolean} shifted - Whether shift was held (long press)
  */
 async function sendCommand(key, shifted = false) {
-    // Update activity timestamp
+    if (appState.state !== States.CONNECTED) return;
+    const command = Object.hasOwn(keymap, key) ? keymap[key] : key;
+    if (!Object.hasOwn(keyDescriptions, command)) return;
+    const holdHome = shifted && command === 'home';
+
     appState.updateActivity();
     api.flashTrayIcon().catch(() => {});
-
-    if (key === 'Pause') key = 'Space';
-
-    let cmd = keymap[key];
-    if (Object.values(keymap).includes(key)) cmd = key;
-
-    if (!cmd) return;
-
-    // Visual feedback
-    let displayKey = cmd;
-    if (displayKey === 'Play') displayKey = 'Pause';
-    views.flashButton(displayKey);
-
-    // Get display name for feedback
-    let desc = keyDescriptions[cmd] || cmd;
-    views.showCommandFeedback(desc);
-
-    console.log(`Keydown: ${key}, sending command: ${cmd} (shifted: ${shifted})`);
+    views.flashButton(command === 'home_hold' ? 'home' : command);
+    views.showCommandFeedback(keyDescriptions[holdHome ? 'home_hold' : command]);
 
     try {
-        if (shifted) {
-            await device.sendKey(cmd, true);
-        } else {
-            await device.sendKey(cmd);
-        }
+        await device.sendKey(command, shifted);
     } catch (err) {
-        console.error('sendKey error:', err);
+        console.error('Could not send remote command:', err);
     }
 }
 
@@ -308,8 +284,13 @@ function openKeyboard() {
 let submittingPin = false;
 
 async function submitPairingCode() {
+    if (submittingPin) return;
     const code = $('#pairCode').val();
-    if (submittingPin || !/^\d{4}$/.test(code)) return;
+    if (!/^\d{4}$/.test(code)) {
+        views.setStatus('Enter the four-digit PIN.');
+        $('#pairCode').focus();
+        return;
+    }
 
     submittingPin = true;
     $('#pairCode').val('');
@@ -384,14 +365,24 @@ function handleDarkMode() {
     const dark = mode === 'darkmode' || (mode === 'systemmode' &&
         window.matchMedia('(prefers-color-scheme: dark)').matches);
     $('body').toggleClass('darkMode', dark);
-    $('#s2style-sheet').attr('href', dark ? 'css/select2-inverted.css' : 'css/select2.min.css');
 }
 
-appState.on(States.SCANNING, () => {
-    device.scan().then(devices => {
+async function scanForDevices() {
+    if (appState.state !== States.SCANNING) return;
+    const rescan = document.getElementById('scanAgain');
+    rescan.disabled = true;
+    views.setStatus('Looking for Apple TVs…');
+    try {
+        const devices = await device.scan();
         if (appState.state === States.SCANNING) views.createDevicePicker(devices);
-    }).catch(() => views.setStatus('Scan failed. Check Local Network access in System Settings.'));
-});
+    } catch {
+        if (appState.state === States.SCANNING) views.showScanError();
+    } finally {
+        rescan.disabled = false;
+    }
+}
+
+appState.on(States.SCANNING, scanForDevices);
 
 appState.on(States.PAIRING_1, ({ device: id }) => {
     setupPairingHandlers();
@@ -406,5 +397,5 @@ appState.on(States.CONNECTING, ({ deviceId, retry }) => {
     if (!retry) device.connectWithRetry(deviceId);
 });
 
-return { init, openKeyboard, handleDarkMode };
+return { init, openKeyboard, handleDarkMode, scanForDevices, sendCommand };
 })();

@@ -1,9 +1,12 @@
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, screen, shell, session } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, screen, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
+const { fileURLToPath, pathToFileURL } = require('node:url');
 const { menubar } = require('menubar');
 const { DeviceService } = require('./device-service');
+
+app.commandLine.appendSwitch('disable-background-networking');
+app.commandLine.appendSwitch('disable-component-update');
 
 const files = { remote: 'index.html', input: 'input.html', hotkey: 'hotkey.html' };
 const urls = Object.fromEntries(Object.entries(files).map(([role, file]) =>
@@ -43,7 +46,8 @@ function webPreferences(role) {
         additionalArguments: [`--atv-window=${role}`],
         nodeIntegration: false,
         contextIsolation: true,
-        sandbox: true
+        sandbox: true,
+        spellcheck: false
     };
 }
 
@@ -115,7 +119,6 @@ function configureIpc() {
     handle('hotkey', 'hotkey:load', loadHotkeys);
     handle('hotkey', 'hotkey:save', saveHotkeys, 'Could not save these shortcuts.');
     handle('hotkey', 'hotkey:close', () => windows.hotkey.close());
-    handle('hotkey', 'hotkey:docs', () => shell.openExternal('https://www.electronjs.org/docs/latest/api/accelerator'));
 }
 
 async function openInput() {
@@ -384,6 +387,29 @@ function createTray() {
     });
 }
 
+function configureLocalSession() {
+    const localSession = session.defaultSession;
+    localSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+    localSession.setPermissionCheckHandler(() => false);
+    localSession.setSpellCheckerEnabled(false);
+    localSession.webRequest.onBeforeRequest(({ url }, callback) => {
+        if (url.startsWith('data:')) {
+            callback({ cancel: false });
+            return;
+        }
+        let bundled = false;
+        if (url.startsWith('file:')) {
+            try {
+                const relative = path.relative(__dirname, fileURLToPath(url));
+                bundled = relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+            } catch {
+                // Reject malformed file URLs.
+            }
+        }
+        callback({ cancel: !bundled });
+    });
+}
+
 if (!app.requestSingleInstanceLock()) {
     app.quit();
 } else {
@@ -398,15 +424,13 @@ if (!app.requestSingleInstanceLock()) {
         devices.disconnect();
     });
     app.whenReady().then(() => {
-        session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-        session.defaultSession.setPermissionCheckHandler(() => false);
+        configureLocalSession();
         configureIpc();
         createInputWindow();
         createTray();
         powerMonitor.on('resume', () => send('remote', 'remote:resume'));
         app.setAboutPanelOptions({
             applicationName: 'ATV Remote', applicationVersion: app.getVersion(), credits: 'Brian Harper',
-            website: 'https://github.com/bsharper/atv-desktop-remote',
             iconPath: path.join(__dirname, 'images', 'full.png')
         });
     }).catch(() => {

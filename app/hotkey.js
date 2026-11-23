@@ -127,8 +127,4 @@ $(document).ready(async function() {
     if (!await loadExistingHotkey()) {
         $("#hotkeys").val(hotkeysFromParsed("Super+Shift+R")).trigger("change");
     }
-    $("#accellink").click(function() {
-        api.openDocs();
-        return false;
-    });
 });

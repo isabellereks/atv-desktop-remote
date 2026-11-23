@@ -41,6 +41,10 @@ Use `npm run build-arm` for an Apple Silicon build. A Developer ID-signed macOS 
 
 Pairings use Electron's OS-backed encrypted storage. On first launch after an upgrade, the app imports saved pairings from the previous renderer storage and removes the old entries after the encrypted write succeeds.
 
+## Privacy and local network access
+
+ATV Remote uses multicast DNS for discovery and an encrypted Companion connection to your paired Apple TV. Companion connections are limited to private addresses on a directly attached subnet. The app has no telemetry, account, or automatic updater. Its windows load bundled resources and the keyboard does not use spellcheck or autocomplete.
+
 ## Notes
 
 This is cobbled together from a few projects I've worked on. It works well enough for me for daily use, so I figured others might like it. 

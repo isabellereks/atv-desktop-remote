@@ -1,6 +1,6 @@
 {
     "name": "atv-mac-remote",
-    "version": "2.2.2-security.5",
+    "version": "2.2.2-security.6",
     "description": "ATV Remote",
     "productName": "ATV Remote",
     "scripts": {
@@ -12,7 +12,8 @@
     "main": "main.js",
     "dependencies": {
         "@bharper/atv-js": "0.3.4",
-        "jquery": "3.7.1",
-        "menubar": "9.5.3"
+        "jquery": "3.8.0",
+        "menubar": "9.5.3",
+        "select2": "4.1.1"
     }
 }

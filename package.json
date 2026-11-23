@@ -1,6 +1,6 @@
 {
     "name": "atv-mac-remote",
-    "version": "2.2.2-security.5",
+    "version": "2.2.2-security.6",
     "main": "app/main.js",
     "description": "ATV Remote",
     "productName": "ATV Remote",
@@ -27,7 +27,16 @@
             "enableNodeCliInspectArguments": false,
             "enableEmbeddedAsarIntegrityValidation": true,
             "onlyLoadAppFromAsar": true
-        }
+        },
+        "files": [
+            "*.html",
+            "*.js",
+            "IconTemplate.png",
+            "css/**",
+            "images/**",
+            "webfonts/**",
+            "!remote.js"
+        ]
     },
     "scripts": {
         "start": "electron app",

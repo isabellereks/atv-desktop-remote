@@ -48,8 +48,7 @@ const bridges = {
     hotkey: {
         load: invoke('hotkey:load'),
         save: invoke('hotkey:save'),
-        close: invoke('hotkey:close'),
-        openDocs: invoke('hotkey:docs')
+        close: invoke('hotkey:close')
     }
 };
 

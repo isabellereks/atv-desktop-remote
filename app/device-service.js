@@ -1,6 +1,6 @@
 const { randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
-const atv = require('@bharper/atv-js');
+const { atv, scan, finishPairing, isLanEndpoint } = require('./atv-transport');
 const { CredentialStore, normalizeCredentials, requireEncryption } = require('./credential-store');
 
 const keys = new Set([
@@ -31,7 +31,7 @@ class DeviceService {
 
     async scan() {
         if (!this.scanInFlight) {
-            this.scanInFlight = atv.scan(5000).then(devices => {
+            this.scanInFlight = scan().then(devices => {
                 this.discovered = new Map(devices.map(device => [randomUUID(), device]));
                 return Array.from(this.discovered, ([id, device]) => ({
                     id, label: `${device.name} (${device.address})`
@@ -44,7 +44,9 @@ class DeviceService {
     async startPair(id) {
         await requireEncryption();
         const device = this.discovered.get(id);
-        if (!device) throw new Error('Scan for your Apple TV and select it again.');
+        if (!device || !isLanEndpoint(device.address, device.port)) {
+            throw new Error('Scan for your Apple TV on the local network and select it again.');
+        }
 
         this.cancelPair();
         const pairing = { device };
@@ -69,7 +71,7 @@ class DeviceService {
         }
         pairing.finishing = true;
         try {
-            const companion = atv.serializeCredentials(await atv.finishCompanionPairing(pairing.session, pin));
+            const companion = atv.serializeCredentials(await finishPairing(pairing.session, pin));
             pairing.session = null;
             if (this.pairing !== pairing) throw new Error('Pairing was canceled.');
             const credentials = normalizeCredentials({ companion, device: pairing.device });
@@ -109,8 +111,8 @@ class DeviceService {
 
         const credentials = entry.credentials;
         let device = credentials.device;
-        if (!device) {
-            const devices = await atv.scan(5000);
+        if (!device || !isLanEndpoint(device.address, device.port)) {
+            const devices = await scan();
             device = credentials.identifier
                 ? devices.find(candidate => candidate.identifier === credentials.identifier)
                 : (devices.length === 1 ? devices[0] : null);

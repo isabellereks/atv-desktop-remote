@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, screen, session } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, powerMonitor, screen, session, Tray } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { fileURLToPath, pathToFileURL } = require('node:url');
@@ -20,6 +20,7 @@ const settingsDir = path.join(process.env.APPDATA || (mac
     : path.join(app.getPath('home'), '.local', 'share')), 'ATV Remote');
 const hotkeyPath = path.join(settingsDir, 'hotkey.txt');
 const remoteSize = { width: 218, height: 554 };
+const menuBarItemId = '66d65237-52b1-48cf-8240-b56bcac1155a';
 
 let trayApp;
 let inputReady;
@@ -356,8 +357,16 @@ function restoreRemotePosition() {
 
 function createTray() {
     remotePosition = loadRemotePosition();
+    let tray;
+    if (mac) {
+        const icon = nativeImage.createFromPath(path.join(__dirname, 'images', 'icon.png'));
+        icon.setTemplateImage(true);
+        tray = new Tray(icon, menuBarItemId);
+        tray.setTitle('ATV');
+    }
     trayApp = menubar({
-        index: urls.remote, icon: path.join(__dirname, 'IconTemplate.png'),
+        index: urls.remote, icon: path.join(__dirname, 'IconTemplate.png'), tray,
+        tooltip: 'ATV Remote',
         preloadWindow: true, showDockIcon: false,
         browserWindow: {
             ...remoteSize, transparent: true, resizable: false, hasShadow: false,

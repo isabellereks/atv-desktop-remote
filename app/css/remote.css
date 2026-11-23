@@ -258,31 +258,13 @@ input:focus-visible {
     line-height: 1;
 }
 
-.seek-keys {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 9px;
-}
-
-.seek-keys button {
-    inline-size: 41px;
-    block-size: 31px;
-    border: 1px solid #ffffff1e;
-    border-radius: 14px;
-    background: #242425;
-    color: #d6d6d7;
-    font-size: 10px;
-}
-
 .direction-key:hover,
 .volume-rocker button:hover {
     background-color: #ffffff17;
 }
 
 .touch-select:hover,
-.round-key:hover,
-.seek-keys button:hover {
+.round-key:hover {
     filter: brightness(1.22);
 }
 
